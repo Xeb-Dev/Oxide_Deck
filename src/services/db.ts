@@ -1,10 +1,20 @@
 import Database from "@tauri-apps/plugin-sql";
 
+export interface Subject {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+  created_at: string;
+}
+
 export interface Folder {
   id: string;
   name: string;
   icon: string | null;
   color: string | null;
+  subject_id: string | null;
+  parent_folder_id: string | null;
   created_at: string;
 }
 
@@ -52,27 +62,77 @@ export function generateUUID(): string {
   return crypto.randomUUID();
 }
 
+// SUBJECTS DB METHODS
+export async function getSubjects(): Promise<Subject[]> {
+  const db = await getDB();
+  return db.select<Subject[]>("SELECT * FROM subjects ORDER BY name ASC");
+}
+
+export async function createSubject(name: string, icon: string | null = "📚", color: string | null = "#37352f"): Promise<Subject> {
+  const db = await getDB();
+  const id = generateUUID();
+  await db.execute(
+    "INSERT INTO subjects (id, name, icon, color) VALUES ($1, $2, $3, $4)",
+    [id, name, icon, color]
+  );
+  return { id, name, icon, color, created_at: new Date().toISOString() };
+}
+
+export async function updateSubject(id: string, name: string, icon: string | null, color: string | null): Promise<void> {
+  const db = await getDB();
+  await db.execute(
+    "UPDATE subjects SET name = $1, icon = $2, color = $3 WHERE id = $4",
+    [name, icon, color, id]
+  );
+}
+
+export async function deleteSubject(id: string): Promise<void> {
+  const db = await getDB();
+  await db.execute("DELETE FROM subjects WHERE id = $1", [id]);
+}
+
 // FOLDERS DB METHODS
 export async function getFolders(): Promise<Folder[]> {
   const db = await getDB();
   return db.select<Folder[]>("SELECT * FROM folders ORDER BY name ASC");
 }
 
-export async function createFolder(name: string, icon: string | null = "📁", color: string | null = "#37352f"): Promise<Folder> {
+export async function createFolder(
+  name: string,
+  icon: string | null = "📁",
+  color: string | null = "#37352f",
+  subjectId: string | null = null,
+  parentFolderId: string | null = null
+): Promise<Folder> {
   const db = await getDB();
   const id = generateUUID();
   await db.execute(
-    "INSERT INTO folders (id, name, icon, color) VALUES ($1, $2, $3, $4)",
-    [id, name, icon, color]
+    "INSERT INTO folders (id, name, icon, color, subject_id, parent_folder_id) VALUES ($1, $2, $3, $4, $5, $6)",
+    [id, name, icon, color, subjectId, parentFolderId]
   );
-  return { id, name, icon, color, created_at: new Date().toISOString() };
+  return {
+    id,
+    name,
+    icon,
+    color,
+    subject_id: subjectId,
+    parent_folder_id: parentFolderId,
+    created_at: new Date().toISOString(),
+  };
 }
 
-export async function updateFolder(id: string, name: string, icon: string | null, color: string | null): Promise<void> {
+export async function updateFolder(
+  id: string,
+  name: string,
+  icon: string | null,
+  color: string | null,
+  subjectId: string | null = null,
+  parentFolderId: string | null = null
+): Promise<void> {
   const db = await getDB();
   await db.execute(
-    "UPDATE folders SET name = $1, icon = $2, color = $3 WHERE id = $4",
-    [name, icon, color, id]
+    "UPDATE folders SET name = $1, icon = $2, color = $3, subject_id = $4, parent_folder_id = $5 WHERE id = $6",
+    [name, icon, color, subjectId, parentFolderId, id]
   );
 }
 
@@ -293,4 +353,36 @@ export async function resetDatabase(): Promise<void> {
   await db.execute("DELETE FROM flashcards");
   await db.execute("DELETE FROM decks");
   await db.execute("DELETE FROM folders");
+}
+
+export async function updateFolderSubject(folderId: string, subjectId: string | null): Promise<void> {
+  const db = await getDB();
+  // Assigning to a subject (or unassigned) makes the folder top-level
+  await db.execute(
+    "UPDATE folders SET subject_id = $1, parent_folder_id = NULL WHERE id = $2",
+    [subjectId, folderId]
+  );
+}
+
+export async function updateDeckFolder(deckId: string, folderId: string | null): Promise<void> {
+  const db = await getDB();
+  await db.execute("UPDATE decks SET folder_id = $1 WHERE id = $2", [folderId, deckId]);
+}
+
+/** Nest a folder under another folder (or clear parent). Inherits subject from the parent. */
+export async function moveFolderToParent(
+  folderId: string,
+  parentFolderId: string | null,
+  subjectId: string | null
+): Promise<void> {
+  const db = await getDB();
+  await db.execute(
+    "UPDATE folders SET parent_folder_id = $1, subject_id = $2 WHERE id = $3",
+    [parentFolderId, subjectId, folderId]
+  );
+}
+
+export async function moveFlashcardToDeck(cardId: string, deckId: string): Promise<void> {
+  const db = await getDB();
+  await db.execute("UPDATE flashcards SET deck_id = $1 WHERE id = $2", [deckId, cardId]);
 }

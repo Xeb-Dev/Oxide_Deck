@@ -8,6 +8,13 @@ export interface AIConfig {
   localModel: string;
 }
 
+export type LLMTask = 'scan' | 'validate' | 'teach' | 'quiz';
+
+export interface TaskAIConfig {
+  provider: 'global' | 'gemini' | 'groq' | 'local';
+  model: string;
+}
+
 export interface LearningPersonality {
   id: string;
   name: string;
@@ -18,6 +25,13 @@ export interface GeneratedFlashcard {
   front: string;
   back: string;
   tags?: string;
+}
+
+export interface PdfGeneratedFlashcard extends GeneratedFlashcard {
+  sourceTerm: string;
+  sourceContext?: string;
+  sourceMode?: 'document' | 'selection';
+  sourcePage?: number;
 }
 
 export interface ValidationResult {
@@ -62,6 +76,17 @@ export function getAIConfig(): AIConfig {
   };
 }
 
+export function getTaskAIConfig(task: LLMTask): TaskAIConfig {
+  const provider = (localStorage.getItem(`oxide_deck_ai_provider_${task}`) as any) || 'global';
+  const model = localStorage.getItem(`oxide_deck_model_${task}`) || '';
+  return { provider, model };
+}
+
+export function saveTaskAIConfig(task: LLMTask, config: TaskAIConfig): void {
+  localStorage.setItem(`oxide_deck_ai_provider_${task}`, config.provider);
+  localStorage.setItem(`oxide_deck_model_${task}`, config.model);
+}
+
 export function getLearningPersonalities(): LearningPersonality[] {
   const stored = localStorage.getItem('oxide_deck_learning_personalities');
   if (!stored) return DEFAULT_PERSONALITIES;
@@ -95,14 +120,28 @@ export function saveLearningPersonalities(personalities: LearningPersonality[]):
   localStorage.setItem('oxide_deck_learning_personalities', JSON.stringify(cleanPersonalities));
 }
 
-async function callLLM(prompt: string, systemPrompt: string, imageBase64?: string, imageMimeType?: string): Promise<string> {
+async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imageBase64?: string, imageMimeType?: string): Promise<string> {
   const config = getAIConfig();
+  const taskConfig = getTaskAIConfig(task);
 
-  if (config.provider === 'gemini') {
+  const provider = taskConfig.provider === 'global' ? config.provider : taskConfig.provider;
+  let model = '';
+  if (taskConfig.provider !== 'global' && taskConfig.model.trim()) {
+    model = taskConfig.model.trim();
+  } else {
+    if (provider === 'gemini') {
+      model = config.geminiModel || 'gemini-1.5-flash';
+    } else if (provider === 'groq') {
+      model = config.groqModel || 'llama-3.3-70b-versatile';
+    } else if (provider === 'local') {
+      model = config.localModel || 'lmstudio-model';
+    }
+  }
+
+  if (provider === 'gemini') {
     if (!config.geminiKey) {
       throw new Error("Gemini API key is not configured in Settings.");
     }
-    const model = config.geminiModel || 'gemini-1.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.geminiKey}`;
 
     const parts: any[] = [{ text: `${systemPrompt}\n\nUser request:\n${prompt}` }];
@@ -138,12 +177,11 @@ async function callLLM(prompt: string, systemPrompt: string, imageBase64?: strin
     }
     return text;
 
-  } else if (config.provider === 'groq') {
+  } else if (provider === 'groq') {
     if (!config.groqKey) {
       throw new Error("Groq API key is not configured in Settings.");
     }
     const baseUrl = 'https://api.groq.com/openai/v1';
-    const model = config.groqModel || 'llama-3.3-70b-versatile';
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -184,13 +222,12 @@ async function callLLM(prompt: string, systemPrompt: string, imageBase64?: strin
     }
     return text;
 
-  } else if (config.provider === 'local') {
+  } else if (provider === 'local') {
     // Local LLM (LM Studio / Ollama): route through Rust proxy to avoid
     // Tauri WebView CORS restrictions which strip the JSON body on localhost requests.
     const { invoke } = await import('@tauri-apps/api/core');
 
     const baseUrl = (config.localUrl || 'http://localhost:1234/v1').replace(/\/$/, '');
-    const model = config.localModel || 'local-model';
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -253,6 +290,20 @@ function cleanJson(text: string): string {
   return clean.trim();
 }
 
+function parseJsonArrayResponse<T>(responseText: string, invalidFormatMessage: string): T[] {
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed as T[];
+    }
+    throw new Error("Response was not a JSON array.");
+  } catch (e) {
+    console.error("Failed to parse AI response:", responseText, e);
+    throw new Error(invalidFormatMessage);
+  }
+}
+
 /**
  * AI Scans raw text to extract key terms and definitions
  */
@@ -268,19 +319,142 @@ Each object in the array must have the following structure:
 Keep definitions concise but comprehensive.`;
 
   const prompt = `Please extract terms and definitions from the following text:\n\n${text}`;
-  const responseText = await callLLM(prompt, systemPrompt);
-  
-  try {
-    const cleaned = cleanJson(responseText);
-    const parsed = JSON.parse(cleaned);
-    if (Array.isArray(parsed)) {
-      return parsed as GeneratedFlashcard[];
-    }
-    throw new Error("Response was not a JSON array.");
-  } catch (e) {
-    console.error("Failed to parse AI response:", responseText, e);
-    throw new Error("AI response was not in the expected JSON format. Please try again.");
+  const responseText = await callLLM('scan', prompt, systemPrompt);
+
+  return parseJsonArrayResponse<GeneratedFlashcard>(
+    responseText,
+    "AI response was not in the expected JSON format. Please try again.",
+  );
+}
+
+/**
+ * AI scans PDF-derived text and returns flashcards plus exact source terms to highlight.
+ */
+export async function scanPdfTextForFlashcards(
+  text: string,
+  sourceMode: 'document' | 'selection' = 'document',
+): Promise<PdfGeneratedFlashcard[]> {
+  const scopeInstruction =
+    sourceMode === 'selection'
+      ? "The text comes from a user-selected PDF excerpt. Only extract definitions found inside that excerpt."
+      : "The text comes from a full PDF document. Extract the most useful definitions from the document.";
+
+  const systemPrompt = `You are an expert educational AI. Analyze the PDF text provided and extract key terms, concepts, or formulas with their definitions or explanations.
+Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
+Each object in the array must have the following structure:
+{
+  "front": "The term, question, or concept",
+  "back": "The definition, explanation, or answer",
+  "tags": "A single comma-separated string of relevant categories or tag labels, or empty",
+  "sourceTerm": "The exact term text copied verbatim from the source PDF text for highlighting",
+  "sourceContext": "A short supporting snippet copied from the source text, or empty",
+  "sourceMode": "${sourceMode}"
+}
+Rules:
+- "sourceTerm" must be copied exactly from the provided source text and should match the visible term text to highlight.
+- Return only terms that actually appear in the source text.
+- Keep definitions concise but comprehensive.
+- ${scopeInstruction}`;
+
+  const prompt = `Please extract terms and definitions from the following PDF text:\n\n${text}`;
+  const responseText = await callLLM('scan', prompt, systemPrompt);
+  const parsed = parseJsonArrayResponse<PdfGeneratedFlashcard>(
+    responseText,
+    "AI response for the PDF scan was not in the expected JSON format. Please try again.",
+  );
+
+  return parsed.map((item) => ({
+    ...item,
+    sourceTerm: item.sourceTerm?.trim() || item.front,
+    sourceContext: item.sourceContext?.trim() || "",
+    sourceMode,
+  }));
+}
+
+/**
+ * Step 1: AI identifies which terms in the PDF text have definitions worth extracting.
+ * Returns a plain string array of term names.
+ */
+async function identifyDefinableTerms(text: string): Promise<string[]> {
+  const systemPrompt = `You are an expert educational AI. Your ONLY task is to read the provided text and identify every term, concept, or formula that has a clear definition or explanation in the text.
+Output ONLY a JSON array of strings. Do not include any conversational text or markdown code blocks.
+Example output: ["Photosynthesis", "Mitosis", "Ohm's Law"]
+Rules:
+- Only include terms that are actually defined or explained in the text.
+- Do not include general topics or section headings unless they are defined.
+- Keep the term names concise — use the exact phrasing from the text.`;
+
+  const prompt = `Identify all terms that have definitions in the following text:\n\n${text}`;
+  const responseText = await callLLM('scan', prompt, systemPrompt);
+  return parseJsonArrayResponse<string>(
+    responseText,
+    "AI response for term identification was not in the expected JSON format. Please try again.",
+  );
+}
+
+/**
+ * Step 2: Given a list of identified terms, ask AI to extract definitions for each from the source text.
+ */
+async function extractDefinitionsForTerms(
+  text: string,
+  terms: string[],
+): Promise<PdfGeneratedFlashcard[]> {
+  const termsListStr = terms.map((t, i) => `${i + 1}. ${t}`).join("\n");
+
+  const systemPrompt = `You are an expert educational AI. You are given a PDF document and a numbered list of terms that have been identified as having definitions in the document.
+For each term, find its definition or explanation in the text and create a flashcard.
+Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
+Each object in the array must have the following structure:
+{
+  "front": "The term, question, or concept",
+  "back": "The definition, explanation, or answer",
+  "tags": "A single comma-separated string of relevant categories or tag labels, or empty",
+  "sourceTerm": "The exact term text copied verbatim from the source PDF text for highlighting",
+  "sourceContext": "A short supporting snippet copied from the source text, or empty",
+  "sourceMode": "document"
+}
+Rules:
+- Create one flashcard per term from the list.
+- "sourceTerm" must be copied exactly from the provided source text.
+- Keep definitions concise but comprehensive.
+- If you cannot find a definition for a term, skip it.`;
+
+  const prompt = `Here are the terms to extract definitions for:\n${termsListStr}\n\nSource PDF text:\n\n${text}`;
+  const responseText = await callLLM('scan', prompt, systemPrompt);
+  const parsed = parseJsonArrayResponse<PdfGeneratedFlashcard>(
+    responseText,
+    "AI response for definition extraction was not in the expected JSON format. Please try again.",
+  );
+
+  return parsed.map((item) => ({
+    ...item,
+    sourceTerm: item.sourceTerm?.trim() || item.front,
+    sourceContext: item.sourceContext?.trim() || "",
+    sourceMode: "document" as const,
+  }));
+}
+
+/**
+ * Two-step smart scan: identifies definable terms first, then extracts definitions.
+ * Provides a progress callback so the UI can show status updates between steps.
+ */
+export async function smartScanPdfForFlashcards(
+  text: string,
+  onProgress?: (step: number, message: string) => void,
+): Promise<PdfGeneratedFlashcard[]> {
+  // Step 1: Identify terms
+  onProgress?.(1, "AI is identifying definable terms in the PDF...");
+  const terms = await identifyDefinableTerms(text);
+
+  if (terms.length === 0) {
+    return [];
   }
+
+  // Step 2: Extract definitions for identified terms
+  onProgress?.(2, `Found ${terms.length} terms. AI is now extracting definitions...`);
+  const cards = await extractDefinitionsForTerms(text, terms);
+
+  return cards;
 }
 
 /**
@@ -298,7 +472,7 @@ Each object in the array must have the following structure:
 Keep definitions concise but comprehensive.`;
 
   const prompt = "Please scan this image of a page/document and extract key terms and definitions.";
-  const responseText = await callLLM(prompt, systemPrompt, base64Image, mimeType);
+  const responseText = await callLLM('scan', prompt, systemPrompt, base64Image, mimeType);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -331,7 +505,7 @@ The object must have the following structure:
 Correct Reference Definition: "${back}"
 Student's Typed Answer: "${userAnswer}"`;
 
-  const responseText = await callLLM(prompt, systemPrompt);
+  const responseText = await callLLM('validate', prompt, systemPrompt);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -365,7 +539,7 @@ The object must have the following structure:
 Correct Reference Definition: "${back}"
 Learner's Explanation to You: "${userAnswer}"`;
 
-  const responseText = await callLLM(prompt, systemPrompt);
+  const responseText = await callLLM('teach', prompt, systemPrompt);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -410,7 +584,7 @@ ${historyText}
 
 Latest learner answer: "${userAnswer}"`;
 
-  const responseText = await callLLM(prompt, systemPrompt);
+  const responseText = await callLLM('teach', prompt, systemPrompt);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -460,7 +634,7 @@ Each object in the array must look like this:
   const cardsText = JSON.stringify(flashcards.map(c => ({ term: c.front, definition: c.back })));
   const prompt = `Generate a quiz from these flashcards:\n\n${cardsText}`;
 
-  const responseText = await callLLM(prompt, systemPrompt);
+  const responseText = await callLLM('quiz', prompt, systemPrompt);
 
   try {
     const cleaned = cleanJson(responseText);

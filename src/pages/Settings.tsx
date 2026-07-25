@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { resetDatabase } from "../services/db";
-import { getAIConfig, getLearningPersonalities, LearningPersonality, saveLearningPersonalities } from "../services/llm";
-import { Eye, EyeOff, Save, Trash2, ShieldAlert, Plus } from "lucide-react";
+import { getAIConfig, getLearningPersonalities, LearningPersonality, saveLearningPersonalities, LLMTask, TaskAIConfig, getTaskAIConfig, saveTaskAIConfig } from "../services/llm";
+import { Eye, EyeOff, Trash2, ShieldAlert, Plus } from "lucide-react";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 
 export default function SettingsPage() {
@@ -19,6 +19,24 @@ export default function SettingsPage() {
   const [personalities, setPersonalities] = useState<LearningPersonality[]>([]);
 
   const [saveStatus, setSaveStatus] = useState<{ message: string; variant: StatusVariant } | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  const [taskSettings, setTaskSettings] = useState<Record<LLMTask, TaskAIConfig>>({
+    scan: { provider: 'global', model: '' },
+    validate: { provider: 'global', model: '' },
+    teach: { provider: 'global', model: '' },
+    quiz: { provider: 'global', model: '' },
+  });
+
+  const handleTaskSettingChange = (task: LLMTask, field: keyof TaskAIConfig, value: string) => {
+    setTaskSettings(prev => ({
+      ...prev,
+      [task]: {
+        ...prev[task],
+        [field]: value
+      }
+    }));
+  };
 
   useEffect(() => {
     const config = getAIConfig();
@@ -30,10 +48,19 @@ export default function SettingsPage() {
     setLocalUrl(config.localUrl);
     setLocalModel(config.localModel);
     setPersonalities(getLearningPersonalities());
+
+    setTaskSettings({
+      scan: getTaskAIConfig('scan'),
+      validate: getTaskAIConfig('validate'),
+      teach: getTaskAIConfig('teach'),
+      quiz: getTaskAIConfig('quiz'),
+    });
+
+    setIsLoaded(true);
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem("oxide_deck_ai_provider", provider);
     localStorage.setItem("oxide_deck_gemini_key", geminiKey);
     localStorage.setItem("oxide_deck_gemini_model", geminiModel);
@@ -43,9 +70,11 @@ export default function SettingsPage() {
     localStorage.setItem("oxide_deck_local_model", localModel);
     saveLearningPersonalities(personalities);
 
-    setSaveStatus({ message: "Configuration saved successfully!", variant: "success" });
-    setTimeout(() => setSaveStatus(null), 3000);
-  };
+    saveTaskAIConfig('scan', taskSettings.scan);
+    saveTaskAIConfig('validate', taskSettings.validate);
+    saveTaskAIConfig('teach', taskSettings.teach);
+    saveTaskAIConfig('quiz', taskSettings.quiz);
+  }, [provider, geminiKey, geminiModel, groqKey, groqModel, localUrl, localModel, personalities, taskSettings, isLoaded]);
 
   const updatePersonality = (id: string, field: 'name' | 'description', value: string) => {
     setPersonalities(prev => prev.map(persona => persona.id === id ? { ...persona, [field]: value } : persona));
@@ -99,7 +128,7 @@ export default function SettingsPage() {
         />
       )}
 
-      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "600px" }}>
+      <form onSubmit={(e) => e.preventDefault()} style={{ display: "flex", flexDirection: "column", gap: "24px", maxWidth: "600px" }}>
         
         {/* LLM Provider selection */}
         <div className="notion-input-group">
@@ -218,6 +247,70 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* TASK SPECIFIC ROUTING */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", border: "1px solid var(--border-color)", borderRadius: "8px", backgroundColor: "var(--bg-secondary)" }}>
+          <div>
+            <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>Task-Specific AI Routing</div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "4px" }}>
+              Assign different AI providers or models to specific features (e.g., use speed-optimized models for answer validation, and high-quality models for quiz generation).
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {[
+              { id: 'scan' as const, label: 'Flashcard Generation', desc: 'Used for text and image-based flashcard scanning.' },
+              { id: 'validate' as const, label: 'Answer Validation', desc: 'Used for evaluating and scoring student-typed answers.' },
+              { id: 'teach' as const, label: 'Teach Mode Tutor', desc: 'Used for interactive dialogue and conversational learning personas.' },
+              { id: 'quiz' as const, label: 'Quiz Generation', desc: 'Used for generating multiple-choice/short-answer quizzes.' }
+            ].map(task => (
+              <div key={task.id} style={{ border: "1px solid var(--border-color)", borderRadius: "8px", padding: "12px", backgroundColor: "var(--bg-primary)", display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--text-primary)" }}>{task.label}</div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: "2px" }}>{task.desc}</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="notion-input-group">
+                    <label style={{ fontSize: "0.7rem" }}>AI Provider</label>
+                    <select
+                      className="notion-input"
+                      value={taskSettings[task.id]?.provider || 'global'}
+                      onChange={(e) => handleTaskSettingChange(task.id, 'provider', e.target.value as any)}
+                      style={{ padding: "6px 10px", fontSize: "0.82rem" }}
+                    >
+                      <option value="global">Inherit Global Provider</option>
+                      <option value="gemini">Google Gemini API</option>
+                      <option value="groq">Groq API</option>
+                      <option value="local">Local LLM</option>
+                    </select>
+                  </div>
+
+                  <div className="notion-input-group">
+                    <label style={{ fontSize: "0.7rem" }}>Model Name</label>
+                    <input
+                      className="notion-input"
+                      type="text"
+                      disabled={taskSettings[task.id]?.provider === 'global'}
+                      value={taskSettings[task.id]?.model || ''}
+                      onChange={(e) => handleTaskSettingChange(task.id, 'model', e.target.value)}
+                      placeholder={
+                        taskSettings[task.id]?.provider === 'global'
+                          ? "Inheriting global model"
+                          : taskSettings[task.id]?.provider === 'gemini'
+                          ? "e.g. gemini-1.5-flash"
+                          : taskSettings[task.id]?.provider === 'groq'
+                          ? "e.g. llama-3.3-70b-versatile"
+                          : "e.g. lmstudio-model"
+                      }
+                      style={{ padding: "6px 10px", fontSize: "0.82rem" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", border: "1px solid var(--border-color)", borderRadius: "8px", backgroundColor: "var(--bg-secondary)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
             <div>
@@ -271,9 +364,10 @@ export default function SettingsPage() {
           )}
         </div>
 
-        <button type="submit" className="notion-btn" style={{ alignSelf: "flex-start" }}>
-          <Save size={16} /> Save Configuration
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", color: "var(--success-color)", fontWeight: 500, padding: "8px 0" }}>
+          <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "var(--success-color)" }} />
+          Changes saved automatically
+        </div>
 
       </form>
 

@@ -105,6 +105,29 @@ pub fn run() {
                 );
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "create_subjects_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS subjects (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    icon TEXT,
+                    color TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                ALTER TABLE folders ADD COLUMN subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add_folder_parent_nesting",
+            sql: "
+                ALTER TABLE folders ADD COLUMN parent_folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL;
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 

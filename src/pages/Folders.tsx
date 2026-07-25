@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { 
+import {
   getFolders, getDecks, createFolder, createDeck, deleteFolder, deleteDeck, updateFolder, updateDeck,
   getFlashcards, createFlashcard, deleteFlashcard, updateFlashcard,
-  Folder, Deck, Flashcard 
+  getSubjects, createSubject, updateSubject, deleteSubject,
+  updateFolderSubject, updateDeckFolder, moveFlashcardToDeck,
+  Folder, Deck, Flashcard, Subject
 } from "../services/db";
 import { 
   Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X
@@ -10,12 +12,16 @@ import {
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
+import FolderNode from "../components/FolderNode";
+import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
+import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../utils/folderTree";
 
 interface FoldersProps {
   currentNav: {
     page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
     deckId?: string;
     folderId?: string;
+    openModal?: 'subject' | 'folder' | 'deck';
   };
   setCurrentNav: (nav: any) => void;
   onSidebarRefresh: () => void;
@@ -24,19 +30,36 @@ interface FoldersProps {
 export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }: FoldersProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState<{ message: string; variant: StatusVariant } | null>(null);
 
   const showError = (message: string) => setBanner({ message, variant: "error" });
 
+  const handleDragEnter = (targetId: string) => (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverId(targetId);
+  };
+
+  const handleDragLeave = (targetId: string) => (e: React.DragEvent<HTMLElement>) => {
+    e.stopPropagation();
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDragOverId((current) => (current === targetId ? null : current));
+  };
+
   // Deck details view
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [deckCards, setDeckCards] = useState<Flashcard[]>([]);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Modals / forms state
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [folderIcon, setFolderIcon] = useState("📁");
+  const [folderSubjectId, setFolderSubjectId] = useState<string>("none");
+  const [folderParentId, setFolderParentId] = useState<string>("none");
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
 
   const [showDeckModal, setShowDeckModal] = useState(false);
@@ -45,6 +68,12 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
   const [deckDesc, setDeckDesc] = useState("");
   const [deckFolderId, setDeckFolderId] = useState<string>("");
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+
+  // Subject modal state
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [subjectName, setSubjectName] = useState("");
+  const [subjectIcon, setSubjectIcon] = useState("📚");
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
   // Flashcard forms state
   const [showCardModal, setShowCardModal] = useState(false);
@@ -57,13 +86,50 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     loadData();
   }, [currentNav.deckId, currentNav.folderId]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      loadData();
+    };
+    window.addEventListener("oxide-deck-db-refresh", handleRefresh);
+    return () => window.removeEventListener("oxide-deck-db-refresh", handleRefresh);
+  }, []);
+
+  useEffect(() => {
+    if (!currentNav.openModal) return;
+
+    if (currentNav.openModal === 'subject') {
+      setEditingSubject(null);
+      setSubjectName("");
+      setSubjectIcon("📚");
+      setShowSubjectModal(true);
+    } else if (currentNav.openModal === 'folder') {
+      setEditingFolder(null);
+      setFolderName("");
+      setFolderIcon("📁");
+      setFolderSubjectId("none");
+      setFolderParentId("none");
+      setShowFolderModal(true);
+    } else if (currentNav.openModal === 'deck') {
+      setEditingDeck(null);
+      setDeckName("");
+      setDeckIcon("🎴");
+      setDeckDesc("");
+      setDeckFolderId(folders[0]?.id || "none");
+      setShowDeckModal(true);
+    }
+
+    setCurrentNav((prev: any) => ({ ...prev, openModal: undefined }));
+  }, [currentNav.openModal, folders, setCurrentNav]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       const f = await getFolders();
       const d = await getDecks();
+      const s = await getSubjects();
       setFolders(f);
       setDecks(d);
+      setSubjects(s);
 
       // Handle direct deck display from sidebar click
       if (currentNav.deckId) {
@@ -89,13 +155,31 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     if (!folderName.trim()) return;
 
     try {
+      const parentIdVal = folderParentId === "none" || !folderParentId ? null : folderParentId;
+      const parentFolder = parentIdVal ? folders.find((f) => f.id === parentIdVal) : null;
+      // Nested folders inherit the parent's subject
+      const subjectIdVal = parentFolder
+        ? parentFolder.subject_id
+        : folderSubjectId === "none" || !folderSubjectId
+          ? null
+          : folderSubjectId;
+
       if (editingFolder) {
-        await updateFolder(editingFolder.id, folderName, folderIcon, editingFolder.color);
+        await updateFolder(
+          editingFolder.id,
+          folderName,
+          folderIcon,
+          editingFolder.color,
+          subjectIdVal,
+          parentIdVal
+        );
       } else {
-        await createFolder(folderName, folderIcon);
+        await createFolder(folderName, folderIcon, "#37352f", subjectIdVal, parentIdVal);
       }
       setFolderName("");
       setFolderIcon("📁");
+      setFolderSubjectId("none");
+      setFolderParentId("none");
       setEditingFolder(null);
       setShowFolderModal(false);
       onSidebarRefresh();
@@ -204,7 +288,61 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setEditingFolder(folder);
     setFolderName(folder.name);
     setFolderIcon(folder.icon || "📁");
+    setFolderSubjectId(folder.subject_id || "none");
+    setFolderParentId(folder.parent_folder_id || "none");
     setShowFolderModal(true);
+  };
+
+  const openAddSubfolder = (parent: Folder, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingFolder(null);
+    setFolderName("");
+    setFolderIcon("📁");
+    setFolderSubjectId(parent.subject_id || "none");
+    setFolderParentId(parent.id);
+    setShowFolderModal(true);
+  };
+
+  const handleCreateSubject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subjectName.trim()) return;
+    try {
+      if (editingSubject) {
+        await updateSubject(editingSubject.id, subjectName, subjectIcon, editingSubject.color);
+      } else {
+        await createSubject(subjectName, subjectIcon);
+      }
+      setSubjectName("");
+      setSubjectIcon("📚");
+      setEditingSubject(null);
+      setShowSubjectModal(false);
+      onSidebarRefresh();
+      loadData();
+    } catch (e) {
+      console.error(e);
+      showError("Failed to save subject: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const handleDeleteSubjectClick = async (subjectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this subject? Folders inside will NOT be deleted, they will become unassigned.")) return;
+    try {
+      await deleteSubject(subjectId);
+      onSidebarRefresh();
+      loadData();
+    } catch (e) {
+      console.error(e);
+      showError("Failed to delete subject: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const openEditSubject = (subject: Subject, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingSubject(subject);
+    setSubjectName(subject.name);
+    setSubjectIcon(subject.icon || "📚");
+    setShowSubjectModal(true);
   };
 
   const openEditDeck = (deck: Deck, e: React.MouseEvent) => {
@@ -315,8 +453,11 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   backgroundColor: "var(--bg-secondary)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "10px"
+                  gap: "10px",
+                  cursor: "grab"
                 }}
+                draggable
+                onDragStart={(e) => setDragData(e, "flashcard", card.id)}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -461,9 +602,19 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
         <div style={{ display: "flex", gap: "8px" }}>
           <button className="notion-btn secondary" onClick={() => {
+            setEditingSubject(null);
+            setSubjectName("");
+            setSubjectIcon("📚");
+            setShowSubjectModal(true);
+          }}>
+            <Plus size={16} /> New Subject
+          </button>
+          <button className="notion-btn secondary" onClick={() => {
             setEditingFolder(null);
             setFolderName("");
             setFolderIcon("📁");
+            setFolderSubjectId("none");
+            setFolderParentId("none");
             setShowFolderModal(true);
           }}>
             <Plus size={16} /> New Folder
@@ -486,55 +637,220 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
       {/* Grid structure of folders */}
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         
-        {/* Folders List */}
-        {folders.map(folder => {
-          const folderDecks = decks.filter(d => d.folder_id === folder.id);
+        {/* Subjects List */}
+        {subjects.map(subject => {
+          const subjectFolders = getRootFolders(folders, subject.id);
+          const isSubjectDragOver = dragOverId === subject.id;
           return (
             <div 
-              key={folder.id} 
+              key={subject.id} 
               style={{ 
-                border: "1px solid var(--border-color)", 
+                border: isSubjectDragOver ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)", 
                 borderRadius: "10px", 
-                overflow: "hidden", 
-                backgroundColor: "var(--bg-secondary)"
+                padding: "20px", 
+                backgroundColor: isSubjectDragOver ? "var(--accent-light)" : "var(--bg-secondary)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+                transition: "all var(--transition-fast)"
+              }}
+              onDragOver={allowDrop}
+              onDragEnter={handleDragEnter(subject.id)}
+              onDragLeave={handleDragLeave(subject.id)}
+              onDrop={async (e) => {
+                setDragOverId(null);
+                const payload = acceptDrop(e, "folder");
+                if (!payload) return;
+                await updateFolderSubject(payload.id, subject.id);
+                loadData();
+                window.dispatchEvent(new Event("oxide-deck-db-refresh"));
               }}
             >
               <div 
                 style={{ 
                   display: "flex", 
                   justifyContent: "space-between", 
-                  alignItems: "center", 
-                  padding: "12px 20px", 
-                  borderBottom: "1px solid var(--border-color)",
-                  backgroundColor: "var(--bg-hover)"
+                  alignItems: "center"
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "1.5rem" }}>{folder.icon || "📁"}</span>
-                  <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>{folder.name}</span>
+                  <span style={{ fontSize: "1.8rem" }}>{subject.icon || "📚"}</span>
+                  <span style={{ fontWeight: 700, fontSize: "1.2rem", fontFamily: "var(--font-title)" }}>{subject.name}</span>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", backgroundColor: "var(--bg-primary)", padding: "2px 8px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
-                    {folderDecks.length} deck{folderDecks.length !== 1 ? 's' : ''}
+                    {subjectFolders.length} folder{subjectFolders.length !== 1 ? 's' : ''}
                   </span>
                 </div>
 
                 <div style={{ display: "flex", gap: "6px" }}>
-                  <button className="theme-toggle-btn" onClick={(e) => openEditFolder(folder, e)}>
+                  <button className="theme-toggle-btn" onClick={(e) => openEditSubject(subject, e)}>
                     <Edit3 size={14} />
                   </button>
-                  <button className="theme-toggle-btn" style={{ color: "var(--danger-color)" }} onClick={(e) => handleDeleteFolderClick(folder.id, e)}>
+                  <button className="theme-toggle-btn" style={{ color: "var(--danger-color)" }} onClick={(e) => handleDeleteSubjectClick(subject.id, e)}>
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
 
-              <div style={{ padding: "20px" }}>
-                <div className="decks-grid">
-                  {folderDecks.map(deck => (
-                    <div 
-                      key={deck.id} 
-                      className="deck-card"
-                      onClick={() => setCurrentNav({ page: 'folders', deckId: deck.id })}
-                    >
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px", paddingLeft: "16px", borderLeft: "2px solid var(--border-color)" }}>
+                {subjectFolders.map(folder => (
+                  <FolderNode
+                    key={folder.id}
+                    folder={folder}
+                    folders={folders}
+                    decks={decks}
+                    dragOverId={dragOverId}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onClearDragOver={() => setDragOverId(null)}
+                    onRefresh={loadData}
+                    onEditFolder={openEditFolder}
+                    onDeleteFolder={handleDeleteFolderClick}
+                    onAddSubfolder={openAddSubfolder}
+                    onEditDeck={openEditDeck}
+                    onDeleteDeck={handleDeleteDeckClick}
+                    onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
+                  />
+                ))}
+
+                {subjectFolders.length === 0 && (
+                  <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.9rem", fontStyle: "italic" }}>
+                    No folders inside this subject yet. Drop a folder here or create one.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {/* Folders with no subject (Unassigned Folders) — always shown as a drop target */}
+        <div 
+          style={{ 
+            border: dragOverId === "unassigned-folders-overview" ? "2px dashed var(--accent-color)" : "1px dashed var(--border-color)", 
+            borderRadius: "10px", 
+            padding: "20px", 
+            backgroundColor: dragOverId === "unassigned-folders-overview" ? "var(--accent-light)" : "var(--bg-secondary)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            transition: "all var(--transition-fast)"
+          }}
+          onDragOver={allowDrop}
+          onDragEnter={handleDragEnter("unassigned-folders-overview")}
+          onDragLeave={handleDragLeave("unassigned-folders-overview")}
+          onDrop={async (e) => {
+            setDragOverId(null);
+            const payload = acceptDrop(e, "folder");
+            if (!payload) return;
+            await updateFolderSubject(payload.id, null);
+            loadData();
+            window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "1.8rem" }}>📁</span>
+            <span style={{ fontWeight: 700, fontSize: "1.2rem", fontFamily: "var(--font-title)" }}>Unassigned Folders</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", backgroundColor: "var(--bg-primary)", padding: "2px 8px", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+              {getRootFolders(folders, null).length} folder{getRootFolders(folders, null).length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {getRootFolders(folders, null).length === 0 && (
+              <div style={{ padding: "12px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem", fontStyle: "italic" }}>
+                Drop a folder here to remove it from a subject
+              </div>
+            )}
+            {getRootFolders(folders, null).map(folder => (
+              <FolderNode
+                key={folder.id}
+                folder={folder}
+                folders={folders}
+                decks={decks}
+                dragOverId={dragOverId}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onClearDragOver={() => setDragOverId(null)}
+                onRefresh={loadData}
+                onEditFolder={openEditFolder}
+                onDeleteFolder={handleDeleteFolderClick}
+                onAddSubfolder={openAddSubfolder}
+                onEditDeck={openEditDeck}
+                onDeleteDeck={handleDeleteDeckClick}
+                onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
+              />
+            ))}
+          </div>
+        </div>
+
+{/* Uncategorized Decks — always shown as a drop target */}
+        <div 
+          style={{ 
+            border: dragOverId === "unassigned-decks-overview" ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)", 
+            borderRadius: "10px", 
+            overflow: "hidden", 
+            backgroundColor: dragOverId === "unassigned-decks-overview" ? "var(--accent-light)" : "var(--bg-secondary)",
+            transition: "all var(--transition-fast)"
+          }}
+          onDragOver={allowDrop}
+          onDragEnter={handleDragEnter("unassigned-decks-overview")}
+          onDragLeave={handleDragLeave("unassigned-decks-overview")}
+          onDrop={async (e) => {
+            setDragOverId(null);
+                  const payload = acceptDrop(e, "deck");
+                  if (!payload) return;
+                  await updateDeckFolder(payload.id, null);
+              loadData();
+              window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+                  }}
+        >
+          <div 
+            style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center", 
+              padding: "12px 20px", 
+              borderBottom: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-hover)"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "1.5rem" }}>🗃️</span>
+              <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>Uncategorized Decks</span>
+            </div>
+          </div>
+
+          <div style={{ padding: "20px" }}>
+            <div className="decks-grid">
+              {decks.filter(d => !d.folder_id).length === 0 && (
+                <div style={{ gridColumn: "1/-1", padding: "12px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem", fontStyle: "italic" }}>
+                  Drop a deck here to remove it from a folder
+                </div>
+              )}
+              {decks.filter(d => !d.folder_id).map(deck => {
+                const isDeckDragOver = dragOverId === deck.id;
+                return (
+                  <div 
+                    key={deck.id} 
+                    className="deck-card"
+                    onClick={() => setCurrentNav({ page: 'folders', deckId: deck.id })}
+                    style={{
+                      border: isDeckDragOver ? "2px dashed var(--accent-color)" : undefined,
+                      backgroundColor: isDeckDragOver ? "var(--accent-light)" : undefined,
+                      cursor: "grab"
+                    }}
+                    draggable
+                    onDragStart={(e) => setDragData(e, "deck", deck.id)}
+                    onDragOver={allowDrop}
+                    onDragEnter={handleDragEnter(deck.id)}
+                    onDragLeave={handleDragLeave(deck.id)}
+                    onDrop={async (e) => {
+                      setDragOverId(null);
+                                        const payload = acceptDrop(e, "flashcard");
+                                        if (!payload) return;
+                                        await moveFlashcardToDeck(payload.id, deck.id);
+                        loadData();
+                        window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+                  }}
+                  >
                       <div className="deck-card-header">
                         <span className="deck-card-emoji">{deck.icon || "🎴"}</span>
                         <span className="deck-card-title">{deck.name}</span>
@@ -561,86 +877,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                         </div>
                       </div>
                     </div>
-                  ))}
-
-                  {folderDecks.length === 0 && (
-                    <div style={{ gridColumn: "1/-1", padding: "16px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem", fontStyle: "italic" }}>
-                      Folder is empty. Create a new deck and put it in this folder!
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Uncategorized Decks */}
-        {decks.filter(d => !d.folder_id).length > 0 && (
-          <div 
-            style={{ 
-              border: "1px solid var(--border-color)", 
-              borderRadius: "10px", 
-              overflow: "hidden", 
-              backgroundColor: "var(--bg-secondary)"
-            }}
-          >
-            <div 
-              style={{ 
-                display: "flex", 
-                justifyContent: "space-between", 
-                alignItems: "center", 
-                padding: "12px 20px", 
-                borderBottom: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-hover)"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "1.5rem" }}>🗃️</span>
-                <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>Uncategorized Decks</span>
-              </div>
-            </div>
-
-            <div style={{ padding: "20px" }}>
-              <div className="decks-grid">
-                {decks.filter(d => !d.folder_id).map(deck => (
-                  <div 
-                    key={deck.id} 
-                    className="deck-card"
-                    onClick={() => setCurrentNav({ page: 'folders', deckId: deck.id })}
-                  >
-                    <div className="deck-card-header">
-                      <span className="deck-card-emoji">{deck.icon || "🎴"}</span>
-                      <span className="deck-card-title">{deck.name}</span>
-                    </div>
-                    <p className="deck-card-desc">{deck.description || "No description."}</p>
-                    
-                    <div className="deck-card-meta">
-                      <span>Click to open</span>
-                      <div style={{ display: "flex", gap: "4px" }}>
-                        <button 
-                          className="theme-toggle-btn" 
-                          style={{ padding: "2px" }}
-                          onClick={(e) => openEditDeck(deck, e)}
-                        >
-                          <Edit3 size={12} />
-                        </button>
-                        <button 
-                          className="theme-toggle-btn" 
-                          style={{ color: "var(--danger-color)", padding: "2px" }}
-                          onClick={(e) => handleDeleteDeckClick(deck.id, e)}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
-        )}
 
-        {folders.length === 0 && decks.length === 0 && (
+        {subjects.length === 0 && folders.length === 0 && decks.length === 0 && (
           <div 
             style={{ 
               border: "1px dashed var(--border-color)", 
@@ -651,7 +894,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               fontSize: "0.95rem"
             }}
           >
-            No folders or decks found. Click <strong>New Folder</strong> or <strong>New Deck</strong> to start mapping your revision sets!
+            No subjects, folders or decks found. Click <strong>New Subject</strong>, <strong>New Folder</strong> or <strong>New Deck</strong> to start mapping your revision sets!
           </div>
         )}
       </div>
@@ -677,6 +920,39 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     required
                     autoFocus
                   />
+                </div>
+                <div className="notion-input-group">
+                  <label>Parent Folder</label>
+                  <select 
+                    className="notion-input"
+                    value={folderParentId}
+                    onChange={(e) => setFolderParentId(e.target.value)}
+                  >
+                    <option value="none">Top level (no parent folder)</option>
+                    {getValidParentFolders(folders, editingFolder?.id).map(f => (
+                      <option key={f.id} value={f.id}>{getFolderPathLabel(folders, f.id)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="notion-input-group">
+                  <label>Subject Assignment</label>
+                  <select 
+                    className="notion-input"
+                    value={folderParentId !== "none" ? "inherited" : folderSubjectId}
+                    onChange={(e) => setFolderSubjectId(e.target.value)}
+                    disabled={folderParentId !== "none"}
+                  >
+                    {folderParentId !== "none" ? (
+                      <option value="inherited">Inherited from parent folder</option>
+                    ) : (
+                      <>
+                        <option value="none">Unassigned (No Subject)</option>
+                        {subjects.map(s => (
+                          <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
                 </div>
                 <EmojiPicker value={folderIcon} onChange={setFolderIcon} />
               </div>
@@ -731,7 +1007,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   >
                     <option value="none">Uncategorized (No Folder)</option>
                     {folders.map(f => (
-                      <option key={f.id} value={f.id}>{f.icon} {f.name}</option>
+                      <option key={f.id} value={f.id}>{getFolderPathLabel(folders, f.id)}</option>
                     ))}
                   </select>
                 </div>
@@ -739,6 +1015,39 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <div className="notion-modal-footer">
                 <button type="button" className="notion-btn secondary" onClick={() => setShowDeckModal(false)}>Cancel</button>
                 <button type="submit" className="notion-btn">{editingDeck ? "Update" : "Create"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Subject Creation Modal */}
+      {showSubjectModal && (
+        <div className="notion-modal-overlay">
+          <div className="notion-modal">
+            <div className="notion-modal-header">
+              <span className="notion-modal-title">{editingSubject ? "Edit Subject" : "Create Subject"}</span>
+              <button className="theme-toggle-btn" onClick={() => setShowSubjectModal(false)}><X size={16} /></button>
+            </div>
+            <form onSubmit={handleCreateSubject}>
+              <div className="notion-modal-content">
+                <div className="notion-input-group">
+                  <label>Subject Name</label>
+                  <input 
+                    className="notion-input"
+                    type="text" 
+                    value={subjectName}
+                    onChange={(e) => setSubjectName(e.target.value)}
+                    placeholder="e.g. Mathematics"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <EmojiPicker value={subjectIcon} onChange={setSubjectIcon} />
+              </div>
+              <div className="notion-modal-footer">
+                <button type="button" className="notion-btn secondary" onClick={() => setShowSubjectModal(false)}>Cancel</button>
+                <button type="submit" className="notion-btn">{editingSubject ? "Update" : "Create"}</button>
               </div>
             </form>
           </div>

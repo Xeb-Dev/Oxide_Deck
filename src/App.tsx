@@ -11,7 +11,9 @@ interface NavigationState {
   page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
   deckId?: string;
   folderId?: string;
+  subjectId?: string;
   revisionMode?: 'flashcard' | 'quiz' | 'teach';
+  openModal?: 'subject' | 'folder' | 'deck';
 }
 
 function App() {
