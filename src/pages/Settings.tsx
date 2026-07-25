@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { resetDatabase } from "../services/db";
+import { resetDatabase, getFSRSParameters, optimizeFSRSParameters, resetFSRSParameters, FsrsParametersInfo } from "../services/db";
 import { getAIConfig, getLearningPersonalities, LearningPersonality, saveLearningPersonalities, LLMTask, TaskAIConfig, getTaskAIConfig, saveTaskAIConfig } from "../services/llm";
-import { Eye, EyeOff, Trash2, ShieldAlert, Plus } from "lucide-react";
+import { Eye, EyeOff, Trash2, ShieldAlert, Plus, Sparkles, RotateCcw, Loader2 } from "lucide-react";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 
 export default function SettingsPage() {
@@ -20,6 +20,10 @@ export default function SettingsPage() {
 
   const [saveStatus, setSaveStatus] = useState<{ message: string; variant: StatusVariant } | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // FSRS parameters
+  const [fsrsParams, setFsrsParams] = useState<FsrsParametersInfo | null>(null);
+  const [fsrsBusy, setFsrsBusy] = useState(false);
 
   const [taskSettings, setTaskSettings] = useState<Record<LLMTask, TaskAIConfig>>({
     scan: { provider: 'global', model: '' },
@@ -57,6 +61,7 @@ export default function SettingsPage() {
     });
 
     setIsLoaded(true);
+    getFSRSParameters().then(setFsrsParams).catch((e) => console.error("Failed to load FSRS params:", e));
   }, []);
 
   useEffect(() => {
@@ -105,6 +110,34 @@ export default function SettingsPage() {
         console.error(e);
         setSaveStatus({ message: "Database reset failed.", variant: "error" });
       }
+    }
+  };
+
+  const handleOptimizeFSRS = async () => {
+    try {
+      setFsrsBusy(true);
+      const result = await optimizeFSRSParameters();
+      setSaveStatus({ message: result.message, variant: result.ok ? "success" : "warning" });
+      setFsrsParams(await getFSRSParameters());
+    } catch (e: any) {
+      console.error(e);
+      setSaveStatus({ message: e?.message || "FSRS optimization failed.", variant: "error" });
+    } finally {
+      setFsrsBusy(false);
+    }
+  };
+
+  const handleResetFSRS = async () => {
+    try {
+      setFsrsBusy(true);
+      await resetFSRSParameters();
+      setFsrsParams(await getFSRSParameters());
+      setSaveStatus({ message: "FSRS parameters reset to defaults.", variant: "success" });
+    } catch (e: any) {
+      console.error(e);
+      setSaveStatus({ message: e?.message || "Failed to reset FSRS parameters.", variant: "error" });
+    } finally {
+      setFsrsBusy(false);
     }
   };
 
@@ -372,6 +405,59 @@ export default function SettingsPage() {
       </form>
 
       <div style={{ height: "24px" }} />
+      <div className="divider" />
+
+      {/* FSRS Parameters */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "600px" }}>
+        <h2 className="section-title" style={{ fontSize: "1.2rem" }}>
+          <Sparkles size={18} /> FSRS Spaced Repetition
+        </h2>
+        <div
+          style={{
+            border: "1px solid var(--border-color)",
+            borderRadius: "8px",
+            padding: "16px",
+            backgroundColor: "var(--bg-secondary)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>Scheduler Parameters</div>
+            <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "4px" }}>
+              The revision system uses the FSRS algorithm (via <code>ts-fsrs</code>). Parameters can be optimized from your review history.
+            </div>
+          </div>
+          <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+            Status:{" "}
+            {fsrsParams ? (
+              <>
+                <strong style={{ color: "var(--text-primary)" }}>
+                  {fsrsParams.isDefault ? "Default parameters" : "Custom parameters"}
+                </strong>
+                {" · "}
+                {fsrsParams.reviewCount} rated review{fsrsParams.reviewCount === 1 ? "" : "s"}
+                {fsrsParams.updatedAt && (
+                  <> · last updated {new Date(fsrsParams.updatedAt).toLocaleString()}</>
+                )}
+              </>
+            ) : (
+              "Loading…"
+            )}
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button className="notion-btn secondary" onClick={handleOptimizeFSRS} disabled={fsrsBusy}>
+              {fsrsBusy ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={16} />}
+              Optimize Parameters
+            </button>
+            <button className="notion-btn secondary" onClick={handleResetFSRS} disabled={fsrsBusy}>
+              <RotateCcw size={16} /> Reset to Defaults
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="divider" />
 
       {/* Danger Zone */}

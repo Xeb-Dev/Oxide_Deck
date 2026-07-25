@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getFlashcards, getDueFlashcards, reviewFlashcard, addRevisionHistory, Flashcard, Deck, getDecks } from "../services/db";
+import { Rating, scoreToRating } from "../services/fsrs";
 import { validateFlashcardAnswer, runTeachingDialogue, generateQuizFromFlashcards, QuizQuestion, ValidationResult, getLearningPersonalities, LearningPersonality } from "../services/llm";
 import { 
   Sparkles, RotateCcw, AlertCircle, Loader2, Award
@@ -139,13 +140,13 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     }
   };
 
-  // FLASHCARD SM2 GRADING
-  const handleCardGrade = async (grade: number) => {
+  // FLASHCARD FSRS GRADING
+  const handleCardGrade = async (rating: Rating) => {
     if (cards.length === 0) return;
     const card = cards[currentIndex];
     
     try {
-      await reviewFlashcard(card.id, grade);
+      await reviewFlashcard(card.id, rating);
       
       // Move to next card
       setIsFlipped(false);
@@ -213,18 +214,11 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     }
   };
 
-  // Auto SM2 Mapping from AI Score
+  // Auto FSRS Mapping from AI Score
   const handleAcceptAIValidation = () => {
     if (!aiValidation) return;
-    const score = aiValidation.score;
-    // Map score out of 100 to SM2 grade
-    let grade = 1;
-    if (score >= 90) grade = 5; // Easy
-    else if (score >= 70) grade = 4; // Good
-    else if (score >= 40) grade = 3; // Hard
-    else grade = 1; // Again
-
-    handleCardGrade(grade);
+    const rating = scoreToRating(aiValidation.score);
+    handleCardGrade(rating);
   };
 
   // QUIZ SUBMIT & AI GRADING
@@ -727,28 +721,28 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
               <button 
                 className="notion-btn secondary" 
                 style={{ color: "var(--danger-color)", fontSize: "0.82rem" }} 
-                onClick={() => handleCardGrade(1)}
+                onClick={() => handleCardGrade(Rating.Again)}
               >
                 Again
               </button>
               <button 
                 className="notion-btn secondary" 
                 style={{ color: "var(--warning-color)", fontSize: "0.82rem" }} 
-                onClick={() => handleCardGrade(3)}
+                onClick={() => handleCardGrade(Rating.Hard)}
               >
                 Hard
               </button>
               <button 
                 className="notion-btn secondary" 
                 style={{ color: "var(--accent-color)", fontSize: "0.82rem" }} 
-                onClick={() => handleCardGrade(4)}
+                onClick={() => handleCardGrade(Rating.Good)}
               >
                 Good
               </button>
               <button 
                 className="notion-btn secondary" 
                 style={{ color: "var(--success-color)", fontSize: "0.82rem" }} 
-                onClick={() => handleCardGrade(5)}
+                onClick={() => handleCardGrade(Rating.Easy)}
               >
                 Easy
               </button>

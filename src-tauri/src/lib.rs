@@ -128,6 +128,39 @@ pub fn run() {
                 ALTER TABLE folders ADD COLUMN parent_folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL;
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "migrate_sm2_to_fsrs",
+            sql: "
+                ALTER TABLE flashcards ADD COLUMN stability REAL DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN difficulty REAL DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN state INTEGER DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN reps INTEGER DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN lapses INTEGER DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN elapsed_days INTEGER DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN scheduled_days INTEGER DEFAULT 0;
+                ALTER TABLE flashcards ADD COLUMN last_review DATETIME;
+                ALTER TABLE revision_history ADD COLUMN rating INTEGER;
+                CREATE TABLE IF NOT EXISTS fsrs_parameters (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    params TEXT,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT OR IGNORE INTO fsrs_parameters (id, params) VALUES (
+                    1,
+                    '[0.4,0.6,2.4,5.8,4.93,0.94,0.86,0.01,1.49,0.14,0.94,2.18,0.05,0.34,1.26,0.29,2.61]'
+                );
+                UPDATE flashcards SET
+                    state = 2,
+                    stability = MAX(interval_days, 1),
+                    difficulty = MIN(10, MAX(1, (2.5 - ease) * 10 + 5)),
+                    reps = repetitions,
+                    scheduled_days = interval_days,
+                    last_review = datetime(next_review, '-' || interval_days || ' days')
+                WHERE repetitions > 0;
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 

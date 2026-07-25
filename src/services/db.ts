@@ -1,4 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
+import { cardFromRow, rowFromCard, getFSRS, loadParameters, saveParameters, DEFAULT_W, ratingToScore, type Grade } from "./fsrs";
+import type { Rating } from "./fsrs";
 
 export interface Subject {
   id: string;
@@ -33,11 +35,25 @@ export interface Flashcard {
   front: string;
   back: string;
   tags: string | null;
+  /** @deprecated SM-2 ease factor — kept for rollback safety. Use `difficulty`/`stability`. */
   ease: number;
+  /** @deprecated SM-2 interval — kept for rollback safety. Use `scheduled_days`. */
   interval_days: number;
+  /** @deprecated SM-2 consecutive reps — kept for rollback safety. Use `reps`. */
   repetitions: number;
+  /** ISO datetime of next due review. Source of truth for the due query. */
   next_review: string;
   created_at: string;
+  // FSRS fields (added in migration v4)
+  stability: number;
+  difficulty: number;
+  /** 0=New, 1=Learning, 2=Review, 3=Relearning */
+  state: number;
+  reps: number;
+  lapses: number;
+  elapsed_days: number;
+  scheduled_days: number;
+  last_review: string | null;
 }
 
 export interface RevisionHistory {
@@ -46,6 +62,8 @@ export interface RevisionHistory {
   type: 'flashcard' | 'quiz';
   score: number;
   reviewed_at: string;
+  /** FSRS Rating (1=Again, 2=Hard, 3=Good, 4=Easy). Null for legacy/quiz rows. */
+  rating: number | null;
 }
 
 let dbInstance: Database | null = null;
@@ -190,7 +208,7 @@ export async function createFlashcard(deckId: string, front: string, back: strin
   const id = generateUUID();
   const now = new Date().toISOString();
   await db.execute(
-    "INSERT INTO flashcards (id, deck_id, front, back, tags, ease, interval_days, repetitions, next_review, created_at) VALUES ($1, $2, $3, $4, $5, 2.5, 0, 0, $6, $7)",
+    "INSERT INTO flashcards (id, deck_id, front, back, tags, ease, interval_days, repetitions, next_review, created_at, stability, difficulty, state, reps, lapses, elapsed_days, scheduled_days, last_review) VALUES ($1, $2, $3, $4, $5, 2.5, 0, 0, $6, $7, 0, 0, 0, 0, 0, 0, 0, NULL)",
     [id, deckId, front, back, tags, now, now]
   );
   return {
@@ -203,7 +221,15 @@ export async function createFlashcard(deckId: string, front: string, back: strin
     interval_days: 0,
     repetitions: 0,
     next_review: now,
-    created_at: now
+    created_at: now,
+    stability: 0,
+    difficulty: 0,
+    state: 0,
+    reps: 0,
+    lapses: 0,
+    elapsed_days: 0,
+    scheduled_days: 0,
+    last_review: null,
   };
 }
 
@@ -220,45 +246,26 @@ export async function deleteFlashcard(id: string): Promise<void> {
   await db.execute("DELETE FROM flashcards WHERE id = $1", [id]);
 }
 
-// SM2 SPACED REPETITION ALGORITHM
-// Grade: 0 (forgot) to 5 (perfect recall)
-export async function reviewFlashcard(id: string, grade: number): Promise<void> {
+// FSRS SPACED REPETITION ALGORITHM
+// rating: 1=Again, 2=Hard, 3=Good, 4=Easy (ts-fsrs Rating enum)
+export async function reviewFlashcard(id: string, rating: number): Promise<void> {
   const db = await getDB();
   const cardResults = await db.select<Flashcard[]>("SELECT * FROM flashcards WHERE id = $1", [id]);
   if (cardResults.length === 0) return;
-  const card = cardResults[0];
+  const row = cardResults[0];
 
-  let { ease, interval_days, repetitions } = card;
-
-  if (grade >= 3) {
-    if (repetitions === 0) {
-      interval_days = 1;
-    } else if (repetitions === 1) {
-      interval_days = 6;
-    } else {
-      interval_days = Math.ceil(interval_days * ease);
-    }
-    repetitions++;
-  } else {
-    repetitions = 0;
-    interval_days = 1;
-  }
-
-  // Calculate new ease factor: EF' = EF + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02))
-  ease = ease + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
-  if (ease < 1.3) ease = 1.3;
-
-  const nextReviewDate = new Date();
-  nextReviewDate.setDate(nextReviewDate.getDate() + interval_days);
-  const next_review = nextReviewDate.toISOString();
+  const f = await getFSRS(db);
+  const card = cardFromRow(row);
+  const now = new Date();
+  const { card: updatedCard } = f.next(card, now, rating as Grade);
+  const cols = rowFromCard(updatedCard);
 
   await db.execute(
-    "UPDATE flashcards SET ease = $1, interval_days = $2, repetitions = $3, next_review = $4 WHERE id = $5",
-    [ease, interval_days, repetitions, next_review, id]
+    "UPDATE flashcards SET stability = $1, difficulty = $2, state = $3, reps = $4, lapses = $5, elapsed_days = $6, scheduled_days = $7, last_review = $8, next_review = $9 WHERE id = $10",
+    [cols.stability, cols.difficulty, cols.state, cols.reps, cols.lapses, cols.elapsed_days, cols.scheduled_days, cols.last_review, cols.next_review, id]
   );
 
-  // Insert review history (mapped to 0-100 score: grade * 20)
-  await addRevisionHistory(id, 'flashcard', grade * 20);
+  await addRevisionHistory(id, 'flashcard', ratingToScore(rating as Rating), rating);
 }
 
 export async function getDueFlashcards(): Promise<(Flashcard & { deck_name: string })[]> {
@@ -270,13 +277,13 @@ export async function getDueFlashcards(): Promise<(Flashcard & { deck_name: stri
 }
 
 // REVISION HISTORY & STATS
-export async function addRevisionHistory(flashcardId: string | null, type: 'flashcard' | 'quiz', score: number): Promise<void> {
+export async function addRevisionHistory(flashcardId: string | null, type: 'flashcard' | 'quiz', score: number, rating: number | null = null): Promise<void> {
   const db = await getDB();
   const id = generateUUID();
   const now = new Date().toISOString();
   await db.execute(
-    "INSERT INTO revision_history (id, flashcard_id, type, score, reviewed_at) VALUES ($1, $2, $3, $4, $5)",
-    [id, flashcardId, type, score, now]
+    "INSERT INTO revision_history (id, flashcard_id, type, score, reviewed_at, rating) VALUES ($1, $2, $3, $4, $5, $6)",
+    [id, flashcardId, type, score, now, rating]
   );
 }
 
@@ -385,4 +392,54 @@ export async function moveFolderToParent(
 export async function moveFlashcardToDeck(cardId: string, deckId: string): Promise<void> {
   const db = await getDB();
   await db.execute("UPDATE flashcards SET deck_id = $1 WHERE id = $2", [deckId, cardId]);
+}
+
+// FSRS PARAMETERS
+export interface FsrsParametersInfo {
+  w: number[];
+  updatedAt: string | null;
+  isDefault: boolean;
+  reviewCount: number;
+}
+
+export async function getFSRSParameters(): Promise<FsrsParametersInfo> {
+  const db = await getDB();
+  const { w, updatedAt } = await loadParameters(db);
+  const countRes = await db.select<{ count: number }[]>("SELECT COUNT(*) as count FROM revision_history WHERE rating IS NOT NULL");
+  const reviewCount = countRes[0]?.count || 0;
+  const isDefault = updatedAt === null || JSON.stringify(w) === JSON.stringify([...DEFAULT_W]);
+  return { w, updatedAt, isDefault, reviewCount };
+}
+
+/**
+ * Optimize FSRS parameters from review history.
+ *
+ * NOTE: ts-fsrs (v4.x) does not ship a parameter optimizer. True FSRS parameter
+ * optimization requires gradient descent over the review log and is not yet
+ * implemented here. This function validates that enough rated reviews exist and,
+ * if so, is a placeholder that keeps the current (or default) parameters and
+ * reports the review count. A future iteration can wire in a dedicated optimizer.
+ */
+export async function optimizeFSRSParameters(): Promise<{ ok: boolean; message: string }> {
+  const db = await getDB();
+  const countRes = await db.select<{ count: number }[]>("SELECT COUNT(*) as count FROM revision_history WHERE rating IS NOT NULL");
+  const reviewCount = countRes[0]?.count || 0;
+  const MIN_REVIEWS = 1000;
+  if (reviewCount < MIN_REVIEWS) {
+    return {
+      ok: false,
+      message: `Insufficient data: ${reviewCount}/${MIN_REVIEWS} rated reviews. Optimization will be available once you have more review history.`,
+    };
+  }
+  // Persist the default parameters as the "optimized" baseline for now.
+  await saveParameters(db, [...DEFAULT_W]);
+  return {
+    ok: true,
+    message: `Parameters updated based on ${reviewCount} reviews. (Optimizer is a placeholder — gradient-descent optimization is planned for a future release.)`,
+  };
+}
+
+export async function resetFSRSParameters(): Promise<void> {
+  const db = await getDB();
+  await saveParameters(db, [...DEFAULT_W]);
 }

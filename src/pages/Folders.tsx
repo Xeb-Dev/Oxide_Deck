@@ -6,6 +6,7 @@ import {
   updateFolderSubject, updateDeckFolder, moveFlashcardToDeck,
   Folder, Deck, Flashcard, Subject
 } from "../services/db";
+import { stateLabel } from "../services/fsrs";
 import { 
   Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X
 } from "lucide-react";
@@ -503,7 +504,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     )}
                   </div>
                   <div>
-                    Next review: {new Date(card.next_review).toLocaleDateString()} (Interval: {card.interval_days}d)
+                    Next: {new Date(card.next_review).toLocaleDateString()} ({stateLabel(card.state)}, {card.scheduled_days}d)
                   </div>
                 </div>
               </div>
