@@ -11,7 +11,8 @@ import {
   Menu,
   X,
   FileText,
-  TrendingUp
+  TrendingUp,
+  Target
 } from "lucide-react";
 import { getFolders, getDecks, getSubjects, Folder, Deck, Subject, updateFolderSubject, updateDeckFolder, moveFlashcardToDeck } from "../services/db";
 import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
@@ -20,11 +21,11 @@ import SidebarFolderItem from "./SidebarFolderItem";
 
 interface LayoutProps {
   currentNav: {
-    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
+    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores' | 'mock';
     deckId?: string;
     folderId?: string;
     subjectId?: string;
-    revisionMode?: 'flashcard' | 'quiz' | 'teach';
+    revisionMode?: 'flashcard' | 'quiz' | 'teach' | 'mock';
     openModal?: 'subject' | 'folder' | 'deck';
   };
   setCurrentNav: (nav: any) => void;
@@ -218,6 +219,13 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
             >
               <FileText size={16} />
               <span>Tests</span>
+            </div>
+            <div 
+              className={`sidebar-item ${currentNav.page === 'mock' ? 'active' : ''}`}
+              onClick={() => handleNav({ page: 'mock' })}
+            >
+              <Target size={16} />
+              <span>Mock Exams</span>
             </div>
             <div 
               className={`sidebar-item ${currentNav.page === 'scores' ? 'active' : ''}`}

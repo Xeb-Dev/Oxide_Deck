@@ -1,3 +1,5 @@
+import type { TestQuestionType } from './db';
+
 export interface AIConfig {
   provider: 'gemini' | 'groq' | 'local';
   geminiKey: string;
@@ -1085,5 +1087,126 @@ Rules:
   } catch (e) {
     console.error("Failed analyzeTestWithAI:", responseText, e);
     throw new Error("AI failed to analyze the test. Please try again.");
+  }
+}
+
+export interface GeneratedMockQuestion {
+  type: TestQuestionType;
+  question: string;
+  options?: string[];
+  correctAnswer: string;
+}
+
+/**
+ * Generate a Variable Variation Mock Test:
+ * Takes an existing test paper and creates a new version where numbers, equations, values,
+ * names, and parameters are mutated while preserving problem-solving logic.
+ */
+export async function generateVariableVariationTest(
+  testName: string,
+  subjectName: string,
+  questions: { type: string; question: string; options?: string[] | null; correctAnswer?: string | null }[],
+  topicFocus?: string,
+): Promise<{ title: string; questions: GeneratedMockQuestion[] }> {
+  const systemPrompt = `You are an expert test creator and exam paper generator.
+Given a past test paper "${testName}" in "${subjectName}", generate a NEW variant exam paper.
+
+Instructions:
+1. Change numbers, values, units, variable names, and parameters across all questions.
+2. Ensure mathematical, scientific, and logical correctness of all new values and official solutions.
+3. Keep the same structure and difficulty level as the original test.
+${topicFocus ? `4. Focus specifically on the topic area: "${topicFocus}".` : ''}
+
+Output ONLY a JSON object:
+{
+  "title": "${testName} (Variant Edition)",
+  "questions": [
+    {
+      "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+      "question": "Newly mutated question prompt with new variables/values",
+      "options": ["Option A", "Option B", "Option C", "Option D"] (only if multiple-choice),
+      "correctAnswer": "Correct answer corresponding to the mutated values"
+    }
+  ]
+}`;
+
+  const prompt = `Original Questions:\n${JSON.stringify(questions, null, 2)}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null && Array.isArray(parsed.questions)) {
+      return {
+        title: typeof parsed.title === 'string' ? parsed.title : `${testName} (Variant)`,
+        questions: parsed.questions.map((q: any) => ({
+          type: (q.type as TestQuestionType) || 'short-answer',
+          question: q.question || '',
+          options: Array.isArray(q.options) ? q.options : undefined,
+          correctAnswer: q.correctAnswer || '',
+        })),
+      };
+    }
+    throw new Error("Invalid mock test JSON structure.");
+  } catch (e) {
+    console.error("Failed generateVariableVariationTest:", responseText, e);
+    throw new Error("AI failed to generate variable variation test. Please try again.");
+  }
+}
+
+/**
+ * Generate a Flashcard-Based Mock Exam (mimicking past test structure):
+ * Uses flashcard concepts/definitions and past exam question formats to build a brand new mock test.
+ */
+export async function generateFlashcardMimicMock(
+  subjectName: string,
+  topicFocus: string,
+  flashcards: { front: string; back: string }[],
+  exemplarQuestions?: { type: string; question: string }[],
+): Promise<{ title: string; questions: GeneratedMockQuestion[] }> {
+  const systemPrompt = `You are an expert exam designer.
+Given a study topic "${topicFocus}" in subject "${subjectName}", and flashcards (front/back concepts), generate a realistic, rigorous mock exam.
+
+${exemplarQuestions && exemplarQuestions.length > 0 ? `Mimic the question types and structural format of past exam questions:\n${JSON.stringify(exemplarQuestions.slice(0, 5), null, 2)}` : ''}
+
+Rules:
+- Create 5 to 10 exam questions testing the flashcard concepts and topic "${topicFocus}".
+- Include a mix of question types (multiple-choice, short-answer, maths, true-false).
+- Provide accurate official "correctAnswer" for each question.
+
+Output ONLY a JSON object:
+{
+  "title": "${topicFocus || subjectName} AI Mock Exam",
+  "questions": [
+    {
+      "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+      "question": "Question text",
+      "options": ["A", "B", ...] (for multiple-choice),
+      "correctAnswer": "Official correct answer"
+    }
+  ]
+}`;
+
+  const prompt = `Topic: ${topicFocus}\nSubject: ${subjectName}\nFlashcards:\n${JSON.stringify(flashcards.slice(0, 20), null, 2)}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null && Array.isArray(parsed.questions)) {
+      return {
+        title: typeof parsed.title === 'string' ? parsed.title : `${topicFocus || subjectName} Mock Exam`,
+        questions: parsed.questions.map((q: any) => ({
+          type: (q.type as TestQuestionType) || 'short-answer',
+          question: q.question || '',
+          options: Array.isArray(q.options) ? q.options : undefined,
+          correctAnswer: q.correctAnswer || '',
+        })),
+      };
+    }
+    throw new Error("Invalid mock test JSON structure.");
+  } catch (e) {
+    console.error("Failed generateFlashcardMimicMock:", responseText, e);
+    throw new Error("AI failed to generate mock exam from flashcards. Please try again.");
   }
 }

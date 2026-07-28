@@ -8,7 +8,7 @@ import {
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
 import { 
-  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X
+  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Target
 } from "lucide-react";
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
@@ -19,7 +19,7 @@ import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../ut
 
 interface FoldersProps {
   currentNav: {
-    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
+    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores' | 'mock';
     deckId?: string;
     folderId?: string;
     openModal?: 'subject' | 'folder' | 'deck';
@@ -420,6 +420,14 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             >
               <Sparkles size={16} />
               Teach AI
+            </button>
+            <button 
+              className="notion-btn secondary"
+              onClick={() => setCurrentNav({ page: 'mock', deckId: selectedDeck.id })}
+              disabled={deckCards.length === 0}
+            >
+              <Target size={16} />
+              Mock Exam
             </button>
           </div>
         </div>

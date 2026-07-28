@@ -277,7 +277,7 @@ export async function getDueFlashcards(): Promise<(Flashcard & { deck_name: stri
 }
 
 // REVISION HISTORY & STATS
-export async function addRevisionHistory(flashcardId: string | null, type: 'flashcard' | 'quiz', score: number, rating: number | null = null): Promise<void> {
+export async function addRevisionHistory(flashcardId: string | null, type: 'flashcard' | 'quiz' | 'mock', score: number, rating: number | null = null): Promise<void> {
   const db = await getDB();
   const id = generateUUID();
   const now = new Date().toISOString();

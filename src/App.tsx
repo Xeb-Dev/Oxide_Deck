@@ -7,14 +7,15 @@ import Revision from "./pages/Revision";
 import SettingsPage from "./pages/Settings";
 import TestPage from "./pages/Test";
 import ScoresPage from "./pages/Scores";
+import MockExamPage from "./pages/MockExam";
 import "./App.css";
 
 interface NavigationState {
-  page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
+  page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores' | 'mock';
   deckId?: string;
   folderId?: string;
   subjectId?: string;
-  revisionMode?: 'flashcard' | 'quiz' | 'teach';
+  revisionMode?: 'flashcard' | 'quiz' | 'teach' | 'mock';
   openModal?: 'subject' | 'folder' | 'deck';
 }
 
@@ -52,6 +53,8 @@ function App() {
         return <Revision currentNav={currentNav} setCurrentNav={handleNavChange} />;
       case 'tests':
         return <TestPage currentNav={currentNav} setCurrentNav={handleNavChange} />;
+      case 'mock':
+        return <MockExamPage currentNav={currentNav} setCurrentNav={handleNavChange} />;
       case 'scores':
         return <ScoresPage setCurrentNav={handleNavChange} />;
       case 'settings':

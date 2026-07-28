@@ -52,7 +52,7 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
     }
   };
 
-  const handleStartRevision = (deckId: string, mode: 'flashcard' | 'quiz' | 'teach') => {
+  const handleStartRevision = (deckId: string, mode: 'flashcard' | 'quiz' | 'teach' | 'mock') => {
     setCurrentNav({
       page: 'revision',
       deckId,
@@ -200,6 +200,13 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
                     onClick={() => handleStartRevision(deck.id, 'teach')}
                   >
                     Teach AI
+                  </button>
+                  <button 
+                    className="notion-btn secondary" 
+                    style={{ padding: "4px 8px", fontSize: "0.78rem" }}
+                    onClick={() => setCurrentNav({ page: 'mock', deckId: deck.id })}
+                  >
+                    Mock Exam
                   </button>
                 </div>
               </div>
