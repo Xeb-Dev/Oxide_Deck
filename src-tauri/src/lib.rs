@@ -250,6 +250,14 @@ pub fn run() {
                 );
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 10,
+            description: "add_time_limit_to_tests",
+            sql: "
+                ALTER TABLE tests ADD COLUMN time_limit_minutes INTEGER;
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 

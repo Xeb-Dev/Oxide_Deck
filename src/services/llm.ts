@@ -879,21 +879,22 @@ The array must contain one object per question, in the same order as the input.`
 export async function analyzeTestMetadata(
   sourceText: string,
   questions: ExtractedTestQuestion[],
-): Promise<AnalyzedTestMetadata> {
-  const systemPrompt = `You are an expert educational AI. Analyze the provided test/exam content and infer the test's metadata.
-Output ONLY a JSON object. Do not include conversational text or markdown code blocks.
-The object must have this structure:
+): Promise<{ name: string; description: string; score: number | null; maxScore: number; testDate: string | null; timeLimitMinutes: number | null }> {
+  const systemPrompt = `You are an expert educational test analyzer.
+Given source text from an exam paper and its extracted questions, extract or infer metadata for the test:
 {
-  "name": "A concise, descriptive name for this test (e.g. 'Biology Midterm Exam', 'Chapter 5 Quiz')",
-  "description": "A one-sentence description of the test's topic or scope, or empty string if unclear",
-  "score": <the student's total score as a number, e.g. 85, or calculated from student answers vs correct answers>,
+  "name": "Descriptive title for the test (e.g. Physics Midterm 2025)",
+  "description": "Concise 1-sentence summary of covered topics",
+  "score": <the total score earned as a number e.g. 85, or evaluate student answers to calculate total score out of maxScore>,
   "maxScore": <the maximum possible score as a number, defaulting to 100 or total points>,
-  "testDate": <the date the test was taken in YYYY-MM-DD format if visible on the paper, otherwise null>
+  "testDate": <the date the test was taken in YYYY-MM-DD format if visible on the paper, otherwise null>,
+  "timeLimitMinutes": <allocated duration/time limit in minutes if printed on paper e.g. 60, 90, 120, or null>
 }
 Rules:
 - Infer the name from headings, titles, or the subject matter of the questions.
 - ALWAYS provide "score" and "maxScore". If a total score is explicitly written on the paper (e.g. "85/100" or "Score: 85"), use that exact score. If no explicit total score is printed, but student answers ("userAnswer") are present, evaluate the student's answers against the correct answers and compute total score out of maxScore (e.g. scaled to 100 or total questions).
-- Only set "testDate" if a date is explicitly printed on the paper; otherwise null.`;
+- Only set "testDate" if a date is explicitly printed on the paper; otherwise null.
+- Set "timeLimitMinutes" if a time limit (e.g. "Time allowed: 1 Hour", "Time: 90 mins") is printed on the paper; otherwise null.`;
 
   const prompt = `Source text from the test paper:\n\n${sourceText.slice(0, 4000)}\n\nExtracted questions (${questions.length}):\n${JSON.stringify(questions.map((q) => ({ type: q.type, question: q.question, correctAnswer: q.correctAnswer, userAnswer: q.userAnswer, score: q.score })), null, 2)}`;
   const responseText = await callLLM('test', prompt, systemPrompt);
@@ -908,6 +909,7 @@ Rules:
         score: typeof parsed.score === 'number' ? parsed.score : (typeof parsed.score === 'string' && parsed.score.trim() !== '' && !isNaN(Number(parsed.score)) ? Number(parsed.score) : null),
         maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : (typeof parsed.maxScore === 'string' && parsed.maxScore.trim() !== '' && !isNaN(Number(parsed.maxScore)) ? Number(parsed.maxScore) : 100),
         testDate: typeof parsed.testDate === 'string' && parsed.testDate ? parsed.testDate : null,
+        timeLimitMinutes: typeof parsed.timeLimitMinutes === 'number' ? parsed.timeLimitMinutes : (typeof parsed.timeLimitMinutes === 'string' && parsed.timeLimitMinutes.trim() !== '' && !isNaN(Number(parsed.timeLimitMinutes)) ? Number(parsed.timeLimitMinutes) : null),
       };
     }
     throw new Error("Response was not a JSON object.");
@@ -931,6 +933,7 @@ export async function autoFillAndGradeTestForm(
   score: number | null;
   maxScore: number;
   testDate: string | null;
+  timeLimitMinutes: number | null;
   questions: { type: string; question: string; options?: string[]; correctAnswer: string; userAnswer: string; score: number | null; mathWork: string }[];
 }> {
   const systemPrompt = `You are an expert educational AI assistant.
@@ -942,6 +945,7 @@ Given a list of exam/test questions (and optional source text), perform a comple
 5. Calculate the student's total test "score" and "maxScore" (e.g., sum of question scores or scaled to 100).
 6. Generate a concise, descriptive test "name" (e.g., 'Physics Quiz 2') and a brief "description".
 7. Infer "testDate" (YYYY-MM-DD) if mentioned, or null.
+8. Infer "timeLimitMinutes" (allocated duration in minutes, e.g. 60 or 90) if printed on paper, or null.
 
 Output ONLY a JSON object. Do not include conversational text or markdown code blocks.
 Object structure:
@@ -951,6 +955,7 @@ Object structure:
   "score": <number or null for total test score>,
   "maxScore": <number, e.g. 100 or total points>,
   "testDate": "YYYY-MM-DD" or null,
+  "timeLimitMinutes": <number allocated duration in minutes, e.g. 60, or null>,
   "questions": [
     {
       "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
@@ -977,6 +982,7 @@ Object structure:
         score: typeof parsed.score === 'number' ? parsed.score : (typeof parsed.score === 'string' && parsed.score.trim() !== '' && !isNaN(Number(parsed.score)) ? Number(parsed.score) : null),
         maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : (typeof parsed.maxScore === 'string' && parsed.maxScore.trim() !== '' && !isNaN(Number(parsed.maxScore)) ? Number(parsed.maxScore) : 100),
         testDate: typeof parsed.testDate === 'string' && parsed.testDate ? parsed.testDate : null,
+        timeLimitMinutes: typeof parsed.timeLimitMinutes === 'number' ? parsed.timeLimitMinutes : (typeof parsed.timeLimitMinutes === 'string' && parsed.timeLimitMinutes.trim() !== '' && !isNaN(Number(parsed.timeLimitMinutes)) ? Number(parsed.timeLimitMinutes) : null),
         questions: parsed.questions.map((q: any) => ({
           type: q.type || 'short-answer',
           question: q.question || '',

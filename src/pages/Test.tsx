@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Plus, Trash2, Edit3, Loader2, Sparkles, Image as ImageIcon,
   Type, FileUp, ClipboardList, ChevronLeft, BarChart3, Eye,
-  CheckCircle2, XCircle, MessageSquare, X,
+  CheckCircle2, XCircle, MessageSquare, X, Clock,
 } from "lucide-react";
 import {
   getSubjects, getTestsBySubject, getTestQuestions, createTest,
@@ -66,6 +66,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   const [editScore, setEditScore] = useState<string>("");
   const [editMaxScore, setEditMaxScore] = useState<string>("100");
   const [editTestDate, setEditTestDate] = useState<string>("");
+  const [editTimeLimit, setEditTimeLimit] = useState<string>("");
   const [scanTab, setScanTab] = useState<ScanTab>("text");
   const [scanText, setScanText] = useState("");
   const [pdfExtraction, setPdfExtraction] = useState<PdfExtractionResult | null>(null);
@@ -121,10 +122,18 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   const startAddTest = (subjectId: string) => {
     setEditingTest(null);
     setEditSubjectId(subjectId);
-    setEditName(""); setEditDescription(""); setEditScore(""); setEditMaxScore("100");
+    setEditName("");
+    setEditDescription("");
+    setEditScore("");
+    setEditMaxScore("100");
     setEditTestDate(new Date().toISOString().slice(0, 10));
-    setScanTab("text"); setScanText(""); setPdfExtraction(null); setPdfFileData(null);
-    setImages([]); setExtractedQuestions([]);
+    setEditTimeLimit("");
+    setScanTab("text");
+    setScanText("");
+    setPdfExtraction(null);
+    setPdfFileData(null);
+    setImages([]);
+    setExtractedQuestions([]);
     setView("edit");
   };
 
@@ -132,19 +141,25 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
     setEditingTest(test);
     setEditSubjectId(test.subject_id);
     setEditName(test.name);
-    setEditDescription(test.description ?? "");
+    setEditDescription(test.description || "");
     setEditScore(test.score != null ? String(test.score) : "");
     setEditMaxScore(String(test.max_score));
     setEditTestDate(test.test_date ? test.test_date.slice(0, 10) : "");
-    setScanTab("text"); setScanText(""); setPdfExtraction(null); setPdfFileData(null);
+    setEditTimeLimit(test.time_limit_minutes != null ? String(test.time_limit_minutes) : "");
+    setScanTab("text");
+    setScanText("");
+    setPdfExtraction(null);
+    setPdfFileData(null);
     setImages([]);
+    setScanning(true);
+    setView("edit");
     try {
       const qs = await getTestQuestions(test.id);
       setExtractedQuestions(qs.map((q) => ({
         type: q.type, question: q.question, options: q.options ?? [], correctAnswer: q.correct_answer ?? "", userAnswer: q.user_answer ?? "", score: q.score != null ? String(q.score) : "", mathWork: q.math_work ?? "",
       })));
     } catch (e) { console.error(e); setExtractedQuestions([]); }
-    setView("edit");
+    finally { setScanning(false); }
   };
 
   const openDetail = async (test: Test) => {
@@ -198,7 +213,8 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
           targetTest.description,
           analysisResult.calculatedScore,
           analysisResult.maxScore || targetTest.max_score || 100,
-          targetTest.test_date
+          targetTest.test_date,
+          targetTest.time_limit_minutes
         );
       }
 
@@ -232,6 +248,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
       if (computedScore != null) setEditScore(String(computedScore));
       if (computedMaxScore != null) setEditMaxScore(String(computedMaxScore));
       if ((!editTestDate || editTestDate === new Date().toISOString().slice(0, 10)) && meta.testDate) setEditTestDate(meta.testDate);
+      if (!editTimeLimit && meta.timeLimitMinutes) setEditTimeLimit(String(meta.timeLimitMinutes));
     } catch (e) {
       console.error("Auto-fill metadata failed:", e);
     }
@@ -282,6 +299,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
       if (totalScore != null) setEditScore(String(totalScore));
       if (totalMaxScore != null) setEditMaxScore(String(totalMaxScore));
       if (result.testDate) setEditTestDate(result.testDate);
+      if (result.timeLimitMinutes) setEditTimeLimit(String(result.timeLimitMinutes));
 
       setStatus({ message: "AI auto-filled all fields & calculated total score!", variant: "success" });
     } catch (e: any) {
@@ -400,6 +418,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
       const scoreNum = editScore.trim() === "" ? null : Number(editScore);
       const maxNum = Number(editMaxScore) || 100;
       const testDate = editTestDate || null;
+      const timeLimitNum = editTimeLimit.trim() === "" ? null : Number(editTimeLimit);
 
       let sourceType: Test["source_type"] = "manual";
       let sourceData: string | null = null;
@@ -412,11 +431,11 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
 
       let testId: string;
       if (editingTest) {
-        await updateTest(editingTest.id, editName, editDescription || null, scoreNum, maxNum, testDate);
+        await updateTest(editingTest.id, editName, editDescription || null, scoreNum, maxNum, testDate, timeLimitNum);
         await deleteTestQuestions(editingTest.id);
         testId = editingTest.id;
       } else {
-        const created = await createTest(editSubjectId, editName, editDescription || null, sourceType, sourceData, scoreNum, maxNum, testDate);
+        const created = await createTest(editSubjectId, editName, editDescription || null, sourceType, sourceData, scoreNum, maxNum, testDate, timeLimitNum);
         testId = created.id;
       }
 
@@ -462,7 +481,8 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
         editingTest={editingTest} subjects={subjects} editSubjectId={editSubjectId} setEditSubjectId={setEditSubjectId}
         editName={editName} setEditName={setEditName} editDescription={editDescription} setEditDescription={setEditDescription}
         editScore={editScore} setEditScore={setEditScore} editMaxScore={editMaxScore} setEditMaxScore={setEditMaxScore}
-        editTestDate={editTestDate} setEditTestDate={setEditTestDate} scanTab={scanTab} setScanTab={setScanTab}
+        editTestDate={editTestDate} setEditTestDate={setEditTestDate} editTimeLimit={editTimeLimit} setEditTimeLimit={setEditTimeLimit}
+        scanTab={scanTab} setScanTab={setScanTab}
         scanText={scanText} setScanText={setScanText} onScanText={handleScanText} onPdfUpload={handlePdfUpload}
         onScanPdf={handleScanPdf} pdfExtraction={pdfExtraction} onImagesAdded={handleImagesAdded}
         onRemoveImage={removeImage} onDrop={handleDrop} dragOver={dragOver} setDragOver={setDragOver}
@@ -543,9 +563,14 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
                               <div key={t.id} className="test-card" onClick={() => openDetail(t)} style={{ cursor: "pointer" }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{t.name}</div>
-                                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                                    {t.test_date ? new Date(t.test_date).toLocaleDateString() : "No date"}
-                                    {t.source_type !== "manual" && <> · scanned ({t.source_type})</>}
+                                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                    <span>{t.test_date ? new Date(t.test_date).toLocaleDateString() : "No date"}</span>
+                                    {t.time_limit_minutes != null && (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                                        · <Clock size={11} /> {t.time_limit_minutes} mins allowed
+                                      </span>
+                                    )}
+                                    {t.source_type !== "manual" && <span>· scanned ({t.source_type})</span>}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -753,6 +778,7 @@ interface EditViewProps {
   editScore: string; setEditScore: (v: string) => void;
   editMaxScore: string; setEditMaxScore: (v: string) => void;
   editTestDate: string; setEditTestDate: (v: string) => void;
+  editTimeLimit: string; setEditTimeLimit: (v: string) => void;
   scanTab: ScanTab; setScanTab: (v: ScanTab) => void;
   scanText: string; setScanText: (v: string) => void;
   onScanText: () => void;
@@ -780,10 +806,10 @@ function EditView(props: EditViewProps) {
   const {
     editingTest, subjects, editSubjectId, setEditSubjectId, editName, setEditName,
     editDescription, setEditDescription, editScore, setEditScore, editMaxScore,
-    setEditMaxScore, editTestDate, setEditTestDate, scanTab, setScanTab, scanText,
-    setScanText, onScanText, onPdfUpload, onScanPdf, pdfExtraction, onImagesAdded,
-    onRemoveImage, onDrop, dragOver, setDragOver, images,
-    extractedQuestions, addManualQuestion, updateQuestion, deleteQuestion,
+    setEditMaxScore, editTestDate, setEditTestDate, editTimeLimit, setEditTimeLimit,
+    scanTab, setScanTab, scanText, setScanText, onScanText, onPdfUpload, onScanPdf,
+    pdfExtraction, onImagesAdded, onRemoveImage, onDrop, dragOver, setDragOver,
+    images, extractedQuestions, addManualQuestion, updateQuestion, deleteQuestion,
     scanning, saving, onAutoFillAllAndGrade, onSave, onCancel, status, setStatus,
   } = props;
 
@@ -819,18 +845,26 @@ function EditView(props: EditViewProps) {
             Description (optional)
             <textarea className="form-input" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={2} placeholder="Notes about this test…" />
           </label>
-          <div style={{ display: "flex", gap: "12px" }}>
-            <label className="form-label" style={{ flex: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px" }}>
+            <label className="form-label">
               Score
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "4px" }}>Points earned</div>
               <input className="form-input" type="number" value={editScore} onChange={(e) => setEditScore(e.target.value)} placeholder="e.g. 85" />
             </label>
-            <label className="form-label" style={{ flex: 1 }}>
+            <label className="form-label">
               Max score
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "4px" }}>Total possible points</div>
               <input className="form-input" type="number" value={editMaxScore} onChange={(e) => setEditMaxScore(e.target.value)} placeholder="100" />
             </label>
-            <label className="form-label" style={{ flex: 1 }}>
+            <label className="form-label">
               Test date
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "4px" }}>Date exam taken</div>
               <input className="form-input" type="date" value={editTestDate} onChange={(e) => setEditTestDate(e.target.value)} />
+            </label>
+            <label className="form-label">
+              Time allowed (mins)
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "4px" }}>Duration/time limit</div>
+              <input className="form-input" type="number" value={editTimeLimit} onChange={(e) => setEditTimeLimit(e.target.value)} placeholder="e.g. 60" />
             </label>
           </div>
         </div>
@@ -1126,6 +1160,15 @@ function DetailView({ test, questions, subject, onBack, onEdit, onDelete, onAnal
           )}
           {test.test_date && (
             <div className="test-meta-item"><div className="test-meta-label">Date</div><div>{new Date(test.test_date).toLocaleDateString()}</div></div>
+          )}
+          {test.time_limit_minutes != null && (
+            <div className="test-meta-item">
+              <div className="test-meta-label">Time Allowed</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <Clock size={14} style={{ color: "var(--accent-color)" }} />
+                {test.time_limit_minutes} minutes
+              </div>
+            </div>
           )}
           {test.score != null && (
             <div className="test-meta-item">

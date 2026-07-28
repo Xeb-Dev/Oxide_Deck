@@ -455,6 +455,8 @@ export interface Test {
   score: number | null;
   max_score: number;
   test_date: string | null;
+  /** Allocated time limit / duration in minutes (e.g. 60 or 90). */
+  time_limit_minutes: number | null;
   created_at: string;
 }
 
@@ -500,16 +502,17 @@ export async function createTest(
   sourceData: string | null,
   score: number | null,
   maxScore: number,
-  testDate: string | null
+  testDate: string | null,
+  timeLimitMinutes: number | null = null
 ): Promise<Test> {
   const db = await getDB();
   const id = generateUUID();
   const now = new Date().toISOString();
   await db.execute(
-    "INSERT INTO tests (id, subject_id, name, description, source_type, source_data, score, max_score, test_date, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-    [id, subjectId, name, description, sourceType, sourceData, score, maxScore, testDate, now]
+    "INSERT INTO tests (id, subject_id, name, description, source_type, source_data, score, max_score, test_date, time_limit_minutes, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+    [id, subjectId, name, description, sourceType, sourceData, score, maxScore, testDate, timeLimitMinutes, now]
   );
-  return { id, subject_id: subjectId, name, description, source_type: sourceType, source_data: sourceData, score, max_score: maxScore, test_date: testDate, created_at: now };
+  return { id, subject_id: subjectId, name, description, source_type: sourceType, source_data: sourceData, score, max_score: maxScore, test_date: testDate, time_limit_minutes: timeLimitMinutes, created_at: now };
 }
 
 export async function updateTest(
@@ -518,12 +521,13 @@ export async function updateTest(
   description: string | null,
   score: number | null,
   maxScore: number,
-  testDate: string | null
+  testDate: string | null,
+  timeLimitMinutes: number | null = null
 ): Promise<void> {
   const db = await getDB();
   await db.execute(
-    "UPDATE tests SET name = $1, description = $2, score = $3, max_score = $4, test_date = $5 WHERE id = $6",
-    [name, description, score, maxScore, testDate, id]
+    "UPDATE tests SET name = $1, description = $2, score = $3, max_score = $4, test_date = $5, time_limit_minutes = $6 WHERE id = $7",
+    [name, description, score, maxScore, testDate, timeLimitMinutes, id]
   );
 }
 
