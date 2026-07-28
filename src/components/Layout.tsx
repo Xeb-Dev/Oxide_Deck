@@ -8,7 +8,6 @@ import {
   Sun, 
   Moon,
   Sparkles,
-  BookOpen,
   Menu,
   X,
   FileText,
@@ -227,13 +226,6 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
               <TrendingUp size={16} />
               <span>Scores & Analytics</span>
             </div>
-            <div 
-              className={`sidebar-item ${currentNav.page === 'settings' ? 'active' : ''}`}
-              onClick={() => handleNav({ page: 'settings' })}
-            >
-              <Settings size={16} />
-              <span>Settings</span>
-            </div>
           </div>
 
           {/* Quick Access Folders Tree */}
@@ -438,10 +430,28 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
           </div>
         </div>
 
-        <div className="sidebar-footer">
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            <BookOpen size={12} />
-            <span>Revision mode active</span>
+        <div className="sidebar-footer" style={{ padding: "12px" }}>
+          <div 
+            className={`sidebar-item ${currentNav.page === 'settings' ? 'active' : ''}`}
+            onClick={() => handleNav({ page: 'settings' })}
+            style={{
+              margin: 0,
+              padding: "10px 14px",
+              fontSize: "0.95rem",
+              fontWeight: 600,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: currentNav.page === 'settings' ? "var(--accent-light)" : "var(--bg-primary)",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Settings size={20} style={{ color: currentNav.page === 'settings' ? "var(--accent-color)" : "var(--text-secondary)" }} />
+            <span>Settings</span>
           </div>
         </div>
       </aside>
