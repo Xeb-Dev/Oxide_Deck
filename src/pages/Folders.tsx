@@ -19,7 +19,7 @@ import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../ut
 
 interface FoldersProps {
   currentNav: {
-    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
+    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
     deckId?: string;
     folderId?: string;
     openModal?: 'subject' | 'folder' | 'deck';

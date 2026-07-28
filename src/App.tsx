@@ -5,10 +5,12 @@ import Folders from "./pages/Folders";
 import CreateFlashcard from "./pages/CreateFlashcard";
 import Revision from "./pages/Revision";
 import SettingsPage from "./pages/Settings";
+import TestPage from "./pages/Test";
+import ScoresPage from "./pages/Scores";
 import "./App.css";
 
 interface NavigationState {
-  page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
+  page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
   deckId?: string;
   folderId?: string;
   subjectId?: string;
@@ -48,6 +50,10 @@ function App() {
         return <CreateFlashcard onSidebarRefresh={triggerSidebarRefresh} />;
       case 'revision':
         return <Revision currentNav={currentNav} setCurrentNav={handleNavChange} />;
+      case 'tests':
+        return <TestPage currentNav={currentNav} setCurrentNav={handleNavChange} />;
+      case 'scores':
+        return <ScoresPage setCurrentNav={handleNavChange} />;
       case 'settings':
         return <SettingsPage />;
       default:

@@ -30,6 +30,7 @@ export default function SettingsPage() {
     validate: { provider: 'global', model: '' },
     teach: { provider: 'global', model: '' },
     quiz: { provider: 'global', model: '' },
+    test: { provider: 'global', model: '' },
   });
 
   const handleTaskSettingChange = (task: LLMTask, field: keyof TaskAIConfig, value: string) => {
@@ -58,6 +59,7 @@ export default function SettingsPage() {
       validate: getTaskAIConfig('validate'),
       teach: getTaskAIConfig('teach'),
       quiz: getTaskAIConfig('quiz'),
+      test: getTaskAIConfig('test'),
     });
 
     setIsLoaded(true);
@@ -79,6 +81,7 @@ export default function SettingsPage() {
     saveTaskAIConfig('validate', taskSettings.validate);
     saveTaskAIConfig('teach', taskSettings.teach);
     saveTaskAIConfig('quiz', taskSettings.quiz);
+    saveTaskAIConfig('test', taskSettings.test);
   }, [provider, geminiKey, geminiModel, groqKey, groqModel, localUrl, localModel, personalities, taskSettings, isLoaded]);
 
   const updatePersonality = (id: string, field: 'name' | 'description', value: string) => {
@@ -294,7 +297,8 @@ export default function SettingsPage() {
               { id: 'scan' as const, label: 'Flashcard Generation', desc: 'Used for text and image-based flashcard scanning.' },
               { id: 'validate' as const, label: 'Answer Validation', desc: 'Used for evaluating and scoring student-typed answers.' },
               { id: 'teach' as const, label: 'Teach Mode Tutor', desc: 'Used for interactive dialogue and conversational learning personas.' },
-              { id: 'quiz' as const, label: 'Quiz Generation', desc: 'Used for generating multiple-choice/short-answer quizzes.' }
+              { id: 'quiz' as const, label: 'Quiz Generation', desc: 'Used for generating multiple-choice/short-answer quizzes.' },
+              { id: 'test' as const, label: 'Test Reading & Scanning', desc: 'Used for scanning, extracting, grading, and auto-filling tests.' }
             ].map(task => (
               <div key={task.id} style={{ border: "1px solid var(--border-color)", borderRadius: "8px", padding: "12px", backgroundColor: "var(--bg-primary)", display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div>

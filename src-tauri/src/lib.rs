@@ -161,6 +161,95 @@ pub fn run() {
                 WHERE repetitions > 0;
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "create_tests_tables",
+            sql: "
+                CREATE TABLE IF NOT EXISTS tests (
+                    id TEXT PRIMARY KEY,
+                    subject_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    source_type TEXT NOT NULL DEFAULT 'manual',
+                    source_data TEXT,
+                    score REAL,
+                    max_score REAL DEFAULT 100,
+                    test_date DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS test_questions (
+                    id TEXT PRIMARY KEY,
+                    test_id TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    options TEXT,
+                    correct_answer TEXT,
+                    source_page INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(test_id) REFERENCES tests(id) ON DELETE CASCADE
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "add_user_answer_to_test_questions",
+            sql: "
+                ALTER TABLE test_questions ADD COLUMN user_answer TEXT;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "add_score_to_test_questions",
+            sql: "
+                ALTER TABLE test_questions ADD COLUMN score REAL;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "add_math_work_to_test_questions",
+            sql: "
+                ALTER TABLE test_questions ADD COLUMN math_work TEXT;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 9,
+            description: "create_test_errors_and_analyses_tables",
+            sql: "
+                CREATE TABLE IF NOT EXISTS test_analyses (
+                    id TEXT PRIMARY KEY,
+                    test_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    strengths TEXT,
+                    weaknesses TEXT,
+                    recommendations TEXT,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(test_id) REFERENCES tests(id) ON DELETE CASCADE,
+                    FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS test_errors (
+                    id TEXT PRIMARY KEY,
+                    test_id TEXT NOT NULL,
+                    subject_id TEXT NOT NULL,
+                    question_id TEXT,
+                    question_text TEXT NOT NULL,
+                    user_answer TEXT,
+                    correct_answer TEXT,
+                    error_reason TEXT NOT NULL,
+                    score REAL,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(test_id) REFERENCES tests(id) ON DELETE CASCADE,
+                    FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+                );
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 

@@ -8,7 +8,7 @@ export interface AIConfig {
   localModel: string;
 }
 
-export type LLMTask = 'scan' | 'validate' | 'teach' | 'quiz';
+export type LLMTask = 'scan' | 'validate' | 'teach' | 'quiz' | 'test';
 
 export interface TaskAIConfig {
   provider: 'global' | 'gemini' | 'groq' | 'local';
@@ -646,5 +646,438 @@ Each object in the array must look like this:
   } catch (e) {
     console.error("Failed to generate quiz:", responseText, e);
     throw new Error("AI failed to generate a quiz in the correct format. Please try again.");
+  }
+}
+
+// ===== TEST SCANNING (real-life subject exams) =====
+
+export type ExtractedTestQuestionType = 'multiple-choice' | 'short-answer' | 'long-answer' | 'true-false' | 'maths';
+
+export interface ExtractedTestQuestion {
+  type: ExtractedTestQuestionType;
+  question: string;
+  options?: string[];
+  correctAnswer?: string;
+  /** The student's answer as written on the scanned paper, if visible. */
+  userAnswer?: string;
+  /** The points or score earned for this specific question (e.g. 100 for correct, 0 for wrong, or partial score). */
+  score?: number | null;
+  /** Step-by-step mathematical working out or derivation, if applicable. */
+  mathWork?: string;
+}
+
+export interface AnalyzedTestMetadata {
+  name: string;
+  description: string;
+  score: number | null;
+  maxScore: number | null;
+  testDate: string | null;
+}
+
+/**
+ * AI scans raw text (e.g. pasted exam content) and extracts structured test questions.
+ */
+export async function scanTextForTestQuestions(text: string): Promise<ExtractedTestQuestion[]> {
+  const systemPrompt = `You are an expert educational AI. Analyze the provided text, which contains a completed or blank exam or test paper (including any student written answers), and extract each question as a structured object.
+Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
+Each object in the array must have the following structure:
+{
+  "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+  "question": "The full question text, copied verbatim where possible",
+  "options": ["option A", "option B", ...], // ONLY for multiple-choice; omit or empty otherwise
+  "correctAnswer": "The correct answer to the question (transcribe from paper if shown, OR calculate/provide the correct answer yourself)",
+  "userAnswer": "The student's answer as written/selected on the paper, if visible; otherwise omit or empty",
+  "score": <number for score earned on this question, e.g. 100 if userAnswer is correct, 0 if wrong; or points written on paper; or null if no student answer is present>,
+  "mathWork": "Step-by-step mathematical calculations, equations, or derivations shown on the paper or solved by AI"
+}
+Rules:
+- Preserve the original question wording as closely as possible.
+- For multiple-choice, list all the options exactly as written.
+- Provide "correctAnswer" for every question. If the correct answer is written on the paper, transcribe it; otherwise solve/provide the accurate answer.
+- Include "userAnswer" if the student's handwritten, selected, or typed answer is visible in the source; otherwise omit it.
+- Grade or calculate "score" for each question. If student's answer is present, assign a numeric score.
+- For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
+
+  const prompt = `Please extract the test questions from the following text:\n\n${text}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+  const parsed = parseJsonArrayResponse<any>(
+    responseText,
+    "AI response was not in the expected JSON format. Please try again.",
+  );
+  return parsed.map((q: any) => ({
+    type: q.type || 'short-answer',
+    question: q.question || '',
+    options: Array.isArray(q.options) ? q.options : [],
+    correctAnswer: q.correctAnswer || '',
+    userAnswer: q.userAnswer || '',
+    score: typeof q.score === 'number' ? q.score : (typeof q.score === 'string' && q.score.trim() !== '' && !isNaN(Number(q.score)) ? Number(q.score) : null),
+    mathWork: q.mathWork || '',
+  }));
+}
+
+/**
+ * AI scans PDF-derived text and extracts structured test questions.
+ */
+export async function scanPdfForTestQuestions(promptText: string): Promise<ExtractedTestQuestion[]> {
+  const systemPrompt = `You are an expert educational AI. Analyze the provided PDF text, which contains a completed or blank exam or test paper (including any student written answers), and extract each question as a structured object.
+Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
+Each object in the array must have the following structure:
+{
+  "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+  "question": "The full question text, copied verbatim where possible",
+  "options": ["option A", "option B", ...], // ONLY for multiple-choice; omit or empty otherwise
+  "correctAnswer": "The correct answer to the question (transcribe from paper if shown, OR calculate/provide the correct answer yourself)",
+  "userAnswer": "The student's answer as written/selected on the paper, if visible; otherwise omit or empty",
+  "score": <number for score earned on this question, e.g. 100 if userAnswer is correct, 0 if wrong; or points written on paper; or null if no student answer is present>,
+  "mathWork": "Step-by-step mathematical calculations, equations, or derivations shown on the paper or solved by AI"
+}
+Rules:
+- Preserve the original question wording as closely as possible.
+- For multiple-choice, list all the options exactly as written.
+- Provide "correctAnswer" for every question. If the correct answer is written on the paper, transcribe it; otherwise solve/provide the accurate answer.
+- Include "userAnswer" if the student's handwritten, selected, or typed answer is visible in the source; otherwise omit it.
+- Grade or calculate "score" for each question. If student's answer is present, assign a numeric score.
+- For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
+
+  const prompt = `Please extract the test questions from the following PDF text:\n\n${promptText}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+  const parsed = parseJsonArrayResponse<any>(
+    responseText,
+    "AI response for the PDF scan was not in the expected JSON format. Please try again.",
+  );
+  return parsed.map((q: any) => ({
+    type: q.type || 'short-answer',
+    question: q.question || '',
+    options: Array.isArray(q.options) ? q.options : [],
+    correctAnswer: q.correctAnswer || '',
+    userAnswer: q.userAnswer || '',
+    score: typeof q.score === 'number' ? q.score : (typeof q.score === 'string' && q.score.trim() !== '' && !isNaN(Number(q.score)) ? Number(q.score) : null),
+    mathWork: q.mathWork || '',
+  }));
+}
+
+/**
+ * AI scans an image (photo of an exam paper) and extracts structured test questions.
+ */
+export async function scanImageForTestQuestions(base64Image: string, mimeType: string): Promise<ExtractedTestQuestion[]> {
+  const systemPrompt = `You are an expert educational AI. Analyze the provided image, which is a photo or scan of an exam or test paper (including any student handwritten/selected answers). Extract each question as a structured object.
+Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
+Each object in the array must have the following structure:
+{
+  "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+  "question": "The full question text, transcribed as accurately as possible",
+  "options": ["option A", "option B", ...], // ONLY for multiple-choice; omit or empty otherwise
+  "correctAnswer": "The correct answer to the question (transcribe from paper if shown, OR calculate/provide the correct answer yourself)",
+  "userAnswer": "The student's handwritten/selected answer transcribed from the image, if visible; otherwise omit or empty",
+  "score": <number for score earned on this question, e.g. 100 if userAnswer is correct, 0 if wrong; or points written on paper; or null if no student answer is present>,
+  "mathWork": "Step-by-step mathematical calculations, equations, or derivations shown on the paper or solved by AI"
+}
+Rules:
+- Transcribe the question text as accurately as possible from the image.
+- For multiple-choice, list all the options exactly as written.
+- Provide "correctAnswer" for every question. If the correct answer is shown on the paper, transcribe it; otherwise calculate/provide the accurate answer.
+- Include "userAnswer" if the student's handwritten or selected answer is visible in the image; transcribe it accurately; otherwise omit it.
+- Grade or calculate "score" for each question. If student's answer is present, assign a numeric score.
+- For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
+
+  const prompt = "Please scan this image of an exam/test paper and extract all the questions.";
+  const responseText = await callLLM('test', prompt, systemPrompt, base64Image, mimeType);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed.map((q: any) => ({
+        type: q.type || 'short-answer',
+        question: q.question || '',
+        options: Array.isArray(q.options) ? q.options : [],
+        correctAnswer: q.correctAnswer || '',
+        userAnswer: q.userAnswer || '',
+        score: typeof q.score === 'number' ? q.score : (typeof q.score === 'string' && q.score.trim() !== '' && !isNaN(Number(q.score)) ? Number(q.score) : null),
+        mathWork: q.mathWork || '',
+      }));
+    }
+    throw new Error("Response was not a JSON array.");
+  } catch (e) {
+    console.error("Failed to parse AI response from image:", responseText, e);
+    throw new Error("AI response was not in the expected JSON format. Please try again.");
+  }
+}
+
+// ===== TEST ANSWER REVIEW (AI comments on each question) =====
+
+export interface TestQuestionReview {
+  questionIndex: number;
+  isCorrect: boolean;
+  userAnswer: string;
+  correctAnswer: string;
+  feedback: string;
+}
+
+/**
+ * AI reviews the user's answers to a saved test and produces per-question commentary,
+ * focusing on questions the user got wrong.
+ *
+ * @param questions The test questions (with correct answers, if available).
+ * @param userAnswers The user's answers, indexed parallel to `questions`. Empty string = skipped.
+ * @returns Per-question review array, indexed parallel to `questions`.
+ */
+export async function reviewTestAnswers(
+  questions: { question: string; type: string; options?: string[] | null; correctAnswer?: string | null }[],
+  userAnswers: string[],
+): Promise<TestQuestionReview[]> {
+  const items = questions.map((q, i) => ({
+    index: i,
+    type: q.type,
+    question: q.question,
+    options: q.options ?? null,
+    correctAnswer: q.correctAnswer ?? null,
+    userAnswer: userAnswers[i] ?? "",
+  }));
+
+  const systemPrompt = `You are an expert educational AI reviewing a student's completed exam.
+For each question, compare the student's answer to the correct answer (if provided). Determine whether the student's answer is correct, and write a concise, helpful comment.
+- If the student's answer is correct, briefly affirm it.
+- If the student's answer is wrong or incomplete, explain WHY it is wrong, what the correct answer is, and what the student should study to improve.
+- If no correct answer was provided for a question, do your best to evaluate the student's answer on its merits and provide the correct answer yourself with a brief explanation.
+- If the student left the answer blank, mark it incorrect and explain what the correct answer would be.
+Output ONLY a JSON array of objects. Do not include conversational text or markdown code blocks.
+Each object must have this structure:
+{
+  "questionIndex": <the zero-based index of the question>,
+  "isCorrect": <true or false>,
+  "userAnswer": "The student's answer, echoed back",
+  "correctAnswer": "The correct answer",
+  "feedback": "A concise (1-3 sentence) comment explaining the result and how to improve"
+}
+The array must contain one object per question, in the same order as the input.`;
+
+  const prompt = `Please review the student's answers to the following test questions:\n\n${JSON.stringify(items, null, 2)}`;
+  const responseText = await callLLM('validate', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed as TestQuestionReview[];
+    }
+    throw new Error("Response was not a JSON array.");
+  } catch (e) {
+    console.error("Failed to review test answers:", responseText, e);
+    throw new Error("AI failed to review the test answers. Please try again.");
+  }
+}
+
+/**
+ * AI analyzes scanned test content (text or PDF-extracted text) and infers the
+ * test metadata: name, description, score, max score, and test date.
+ * Used to auto-fill the metadata form after a scan.
+ *
+ * @param sourceText The raw text extracted from the scanned test paper.
+ * @param questions The questions extracted from the same source (used to infer max score).
+ */
+export async function analyzeTestMetadata(
+  sourceText: string,
+  questions: ExtractedTestQuestion[],
+): Promise<AnalyzedTestMetadata> {
+  const systemPrompt = `You are an expert educational AI. Analyze the provided test/exam content and infer the test's metadata.
+Output ONLY a JSON object. Do not include conversational text or markdown code blocks.
+The object must have this structure:
+{
+  "name": "A concise, descriptive name for this test (e.g. 'Biology Midterm Exam', 'Chapter 5 Quiz')",
+  "description": "A one-sentence description of the test's topic or scope, or empty string if unclear",
+  "score": <the student's total score as a number, e.g. 85, or calculated from student answers vs correct answers>,
+  "maxScore": <the maximum possible score as a number, defaulting to 100 or total points>,
+  "testDate": <the date the test was taken in YYYY-MM-DD format if visible on the paper, otherwise null>
+}
+Rules:
+- Infer the name from headings, titles, or the subject matter of the questions.
+- ALWAYS provide "score" and "maxScore". If a total score is explicitly written on the paper (e.g. "85/100" or "Score: 85"), use that exact score. If no explicit total score is printed, but student answers ("userAnswer") are present, evaluate the student's answers against the correct answers and compute total score out of maxScore (e.g. scaled to 100 or total questions).
+- Only set "testDate" if a date is explicitly printed on the paper; otherwise null.`;
+
+  const prompt = `Source text from the test paper:\n\n${sourceText.slice(0, 4000)}\n\nExtracted questions (${questions.length}):\n${JSON.stringify(questions.map((q) => ({ type: q.type, question: q.question, correctAnswer: q.correctAnswer, userAnswer: q.userAnswer, score: q.score })), null, 2)}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return {
+        name: typeof parsed.name === 'string' ? parsed.name : '',
+        description: typeof parsed.description === 'string' ? parsed.description : '',
+        score: typeof parsed.score === 'number' ? parsed.score : (typeof parsed.score === 'string' && parsed.score.trim() !== '' && !isNaN(Number(parsed.score)) ? Number(parsed.score) : null),
+        maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : (typeof parsed.maxScore === 'string' && parsed.maxScore.trim() !== '' && !isNaN(Number(parsed.maxScore)) ? Number(parsed.maxScore) : 100),
+        testDate: typeof parsed.testDate === 'string' && parsed.testDate ? parsed.testDate : null,
+      };
+    }
+    throw new Error("Response was not a JSON object.");
+  } catch (e) {
+    console.error("Failed to analyze test metadata:", responseText, e);
+    throw new Error("AI failed to analyze the test metadata. Please try again.");
+  }
+}
+
+/**
+ * AI automatically completes all fields for a test question set:
+ * populates missing correct answers, fills user answers if detectable,
+ * computes/grades total score, and generates test metadata (name, description).
+ */
+export async function autoFillAndGradeTestForm(
+  questions: { type: string; question: string; options?: string[]; correctAnswer?: string; userAnswer?: string; score?: number | null; mathWork?: string }[],
+  sourceText?: string,
+): Promise<{
+  name: string;
+  description: string;
+  score: number | null;
+  maxScore: number;
+  testDate: string | null;
+  questions: { type: string; question: string; options?: string[]; correctAnswer: string; userAnswer: string; score: number | null; mathWork: string }[];
+}> {
+  const systemPrompt = `You are an expert educational AI assistant.
+Given a list of exam/test questions (and optional source text), perform a complete auto-fill and grading analysis:
+1. Ensure every question has a valid "correctAnswer". If missing, solve the question and provide the correct answer.
+2. Preserve or refine "userAnswer" for each question.
+3. For mathematical or equation questions (or questions of type "maths"), provide or refine the step-by-step mathematical working out, calculations, or derivations in "mathWork".
+4. Grade each individual question: calculate a "score" for each question (e.g., 100 for correct, 0 for incorrect, partial score for partial credit, or point value out of 100).
+5. Calculate the student's total test "score" and "maxScore" (e.g., sum of question scores or scaled to 100).
+6. Generate a concise, descriptive test "name" (e.g., 'Physics Quiz 2') and a brief "description".
+7. Infer "testDate" (YYYY-MM-DD) if mentioned, or null.
+
+Output ONLY a JSON object. Do not include conversational text or markdown code blocks.
+Object structure:
+{
+  "name": "Test Name",
+  "description": "Short description",
+  "score": <number or null for total test score>,
+  "maxScore": <number, e.g. 100 or total points>,
+  "testDate": "YYYY-MM-DD" or null,
+  "questions": [
+    {
+      "type": "multiple-choice" | "short-answer" | "long-answer" | "true-false" | "maths",
+      "question": "Question text",
+      "options": ["A", "B", ...],
+      "correctAnswer": "Correct answer",
+      "userAnswer": "User answer",
+      "score": <number or null, score/points for this specific question>,
+      "mathWork": "Step-by-step math working out or derivation"
+    }
+  ]
+}`;
+
+  const prompt = `Please complete auto-fill and grade analysis for this test form:\n${sourceText ? `Source Text:\n${sourceText.slice(0, 3000)}\n\n` : ''}Questions:\n${JSON.stringify(questions, null, 2)}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null && Array.isArray(parsed.questions)) {
+      return {
+        name: typeof parsed.name === 'string' ? parsed.name : '',
+        description: typeof parsed.description === 'string' ? parsed.description : '',
+        score: typeof parsed.score === 'number' ? parsed.score : (typeof parsed.score === 'string' && parsed.score.trim() !== '' && !isNaN(Number(parsed.score)) ? Number(parsed.score) : null),
+        maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : (typeof parsed.maxScore === 'string' && parsed.maxScore.trim() !== '' && !isNaN(Number(parsed.maxScore)) ? Number(parsed.maxScore) : 100),
+        testDate: typeof parsed.testDate === 'string' && parsed.testDate ? parsed.testDate : null,
+        questions: parsed.questions.map((q: any) => ({
+          type: q.type || 'short-answer',
+          question: q.question || '',
+          options: Array.isArray(q.options) ? q.options : [],
+          correctAnswer: q.correctAnswer || '',
+          userAnswer: q.userAnswer || '',
+          score: typeof q.score === 'number' ? q.score : (typeof q.score === 'string' && q.score.trim() !== '' && !isNaN(Number(q.score)) ? Number(q.score) : null),
+          mathWork: q.mathWork || '',
+        })),
+      };
+    }
+    throw new Error("Response was not a valid JSON object.");
+  } catch (e) {
+    console.error("Failed autoFillAndGradeTestForm:", responseText, e);
+    throw new Error("AI failed to auto-fill all test fields. Please try again.");
+  }
+}
+
+export interface FullTestAnalysisResult {
+  summary: string;
+  strengths: string;
+  weaknesses: string;
+  recommendations: string;
+  calculatedScore: number;
+  maxScore: number;
+  errors: {
+    questionId?: string;
+    questionText: string;
+    userAnswer: string;
+    correctAnswer: string;
+    errorReason: string;
+    score: number;
+  }[];
+}
+
+/**
+ * Perform deep AI analysis of a test: evaluates performance, calculates overall score,
+ * generates breakdown summary with strengths/weaknesses, and identifies specific errors made.
+ */
+export async function analyzeTestWithAI(
+  testName: string,
+  subjectName: string,
+  questions: { id?: string; type: string; question: string; options?: string[] | null; correctAnswer?: string | null; userAnswer?: string | null; score?: number | null; mathWork?: string | null }[],
+): Promise<FullTestAnalysisResult> {
+  const systemPrompt = `You are an expert AI educational tutor and diagnostic evaluator analyzing a completed student test titled "${testName}" in the subject "${subjectName}".
+Analyze the questions, correct answers, student answers, and question scores.
+
+Perform a thorough diagnostic review and output ONLY a JSON object with this structure:
+{
+  "summary": "Concise 2-3 sentence overview of overall student performance on this test.",
+  "strengths": "1-2 bullet points or sentences highlighting what concepts the student mastered.",
+  "weaknesses": "1-2 bullet points or sentences highlighting key misconception areas or topic gaps.",
+  "recommendations": "Actionable, concrete study advice and next steps for improvement.",
+  "calculatedScore": <number total score earned by student on this test, e.g. 75>,
+  "maxScore": <number total possible points, e.g. 100>,
+  "errors": [
+    {
+      "questionId": "ID of question if provided, or empty string",
+      "questionText": "Full question prompt",
+      "userAnswer": "The student's incorrect or partial answer",
+      "correctAnswer": "The official correct answer",
+      "errorReason": "Clear, encouraging 1-2 sentence explanation of WHY the answer was incorrect or incomplete, what concept was missed, and how to solve it correctly.",
+      "score": <score earned for this specific question, e.g. 0 or partial points>
+    }
+  ]
+}
+
+Rules:
+- Include in "errors" array ANY question where the student made a mistake, earned < 100% credit, left it blank, or gave an incorrect/incomplete response.
+- Provide constructive, clear, and encouraging "errorReason" explanation for each mistake.
+- Output strictly valid JSON without markdown wrapping.`;
+
+  const prompt = `Test Title: ${testName}\nSubject: ${subjectName}\nQuestions and Student Responses:\n${JSON.stringify(questions, null, 2)}`;
+  const responseText = await callLLM('test', prompt, systemPrompt);
+
+  try {
+    const cleaned = cleanJson(responseText);
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return {
+        summary: typeof parsed.summary === 'string' ? parsed.summary : 'Test analysis completed.',
+        strengths: typeof parsed.strengths === 'string' ? parsed.strengths : '',
+        weaknesses: typeof parsed.weaknesses === 'string' ? parsed.weaknesses : '',
+        recommendations: typeof parsed.recommendations === 'string' ? parsed.recommendations : '',
+        calculatedScore: typeof parsed.calculatedScore === 'number' ? parsed.calculatedScore : 0,
+        maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : 100,
+        errors: Array.isArray(parsed.errors)
+          ? parsed.errors.map((e: any) => ({
+              questionId: e.questionId || '',
+              questionText: e.questionText || '',
+              userAnswer: e.userAnswer || '',
+              correctAnswer: e.correctAnswer || '',
+              errorReason: e.errorReason || 'Incorrect response.',
+              score: typeof e.score === 'number' ? e.score : 0,
+            }))
+          : [],
+      };
+    }
+    throw new Error("Invalid JSON structure returned by AI.");
+  } catch (e) {
+    console.error("Failed analyzeTestWithAI:", responseText, e);
+    throw new Error("AI failed to analyze the test. Please try again.");
   }
 }

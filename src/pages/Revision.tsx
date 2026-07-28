@@ -10,7 +10,7 @@ import StatusBanner from "../components/StatusBanner";
 
 interface RevisionProps {
   currentNav: {
-    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
+    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
     deckId?: string;
     revisionMode?: 'flashcard' | 'quiz' | 'teach';
   };

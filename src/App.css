@@ -527,6 +527,49 @@ select.notion-input:focus {
   border-color: var(--accent-color);
 }
 
+/* Form controls used by the Tests page (mirror notion-input styling) */
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.form-input,
+input.form-input,
+textarea.form-input,
+select.form-input {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.92rem;
+  font-family: var(--font-sans);
+  width: 100%;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+input.form-input:focus,
+textarea.form-input:focus,
+select.form-input:focus {
+  border-color: var(--accent-color);
+}
+
+input.form-input:disabled,
+textarea.form-input:disabled,
+select.form-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Cards & Grid Lists */
 .decks-grid {
   display: grid;
@@ -1070,5 +1113,250 @@ select.notion-input:focus {
   .sidebar-close-btn {
     display: none;
   }
+}
+
+/* ===== Tests page ===== */
+.test-subject-section {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  background-color: var(--bg-primary);
+}
+
+.test-subject-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+
+.test-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.test-card:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-color);
+}
+
+.test-score-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  min-width: 40px;
+  text-align: center;
+}
+
+.test-score-badge.good {
+  background-color: var(--success-color);
+  color: #fff;
+}
+
+.test-score-badge.ok {
+  background-color: var(--warning-color);
+  color: #fff;
+}
+
+.test-score-badge.low {
+  background-color: var(--danger-color);
+  color: #fff;
+}
+
+.test-trend-chart {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  background-color: var(--bg-secondary);
+}
+
+.test-scan-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.test-scan-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.test-scan-tabs button:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.test-scan-tabs button.active {
+  background-color: var(--accent-light);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.test-question-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  background-color: var(--bg-secondary);
+}
+
+.test-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.test-meta-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.test-source-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* AI answer review */
+.test-review-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-color);
+  border-radius: 8px;
+  background-color: var(--accent-light);
+}
+
+.test-review-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-secondary);
+}
+
+.test-question-card.review-correct {
+  border-color: var(--success-color);
+  border-left: 3px solid var(--success-color);
+}
+
+.test-question-card.review-wrong {
+  border-color: var(--danger-color);
+  border-left: 3px solid var(--danger-color);
+}
+
+.test-review-feedback {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* Image drag-and-drop + gallery */
+.test-image-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border: 2px dashed var(--border-strong);
+  border-radius: 10px;
+  background-color: var(--bg-secondary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+  text-align: center;
+}
+
+.test-image-dropzone:hover,
+.test-image-dropzone.drag-over {
+  border-color: var(--accent-color);
+  background-color: var(--accent-light);
+}
+
+.test-image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.test-image-thumb {
+  position: relative;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+}
+
+.test-image-thumb img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.test-image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color var(--transition-fast);
+}
+
+.test-image-remove:hover {
+  background-color: var(--danger-color);
+}
+
+.test-image-name {
+  display: block;
+  padding: 4px 6px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 

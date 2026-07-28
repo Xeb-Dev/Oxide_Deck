@@ -10,7 +10,9 @@ import {
   Sparkles,
   BookOpen,
   Menu,
-  X
+  X,
+  FileText,
+  TrendingUp
 } from "lucide-react";
 import { getFolders, getDecks, getSubjects, Folder, Deck, Subject, updateFolderSubject, updateDeckFolder, moveFlashcardToDeck } from "../services/db";
 import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
@@ -19,7 +21,7 @@ import SidebarFolderItem from "./SidebarFolderItem";
 
 interface LayoutProps {
   currentNav: {
-    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings';
+    page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores';
     deckId?: string;
     folderId?: string;
     subjectId?: string;
@@ -210,6 +212,20 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
             >
               <Plus size={16} />
               <span>Create Flashcards</span>
+            </div>
+            <div 
+              className={`sidebar-item ${currentNav.page === 'tests' ? 'active' : ''}`}
+              onClick={() => handleNav({ page: 'tests' })}
+            >
+              <FileText size={16} />
+              <span>Tests</span>
+            </div>
+            <div 
+              className={`sidebar-item ${currentNav.page === 'scores' ? 'active' : ''}`}
+              onClick={() => handleNav({ page: 'scores' })}
+            >
+              <TrendingUp size={16} />
+              <span>Scores & Analytics</span>
             </div>
             <div 
               className={`sidebar-item ${currentNav.page === 'settings' ? 'active' : ''}`}
