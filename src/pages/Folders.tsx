@@ -8,7 +8,7 @@ import {
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
 import { 
-  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Target
+  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X
 } from "lucide-react";
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
@@ -420,14 +420,6 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             >
               <Sparkles size={16} />
               Teach AI
-            </button>
-            <button 
-              className="notion-btn secondary"
-              onClick={() => setCurrentNav({ page: 'mock', deckId: selectedDeck.id })}
-              disabled={deckCards.length === 0}
-            >
-              <Target size={16} />
-              Mock Exam
             </button>
           </div>
         </div>

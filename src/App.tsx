@@ -15,7 +15,7 @@ interface NavigationState {
   deckId?: string;
   folderId?: string;
   subjectId?: string;
-  revisionMode?: 'flashcard' | 'quiz' | 'teach' | 'mock';
+  revisionMode?: 'flashcard' | 'quiz' | 'teach';
   openModal?: 'subject' | 'folder' | 'deck';
 }
 

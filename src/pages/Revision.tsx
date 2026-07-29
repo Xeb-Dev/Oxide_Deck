@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getFlashcards, getDueFlashcards, reviewFlashcard, addRevisionHistory,
-  getTestsBySubject, saveTestAnalysis, getTestQuestions, getFolders, Flashcard, Deck, getDecks, Test
+  Flashcard, Deck, getDecks
 } from "../services/db";
 import { Rating, scoreToRating } from "../services/fsrs";
 import {
   validateFlashcardAnswer, runTeachingDialogue, generateQuizFromFlashcards, QuizQuestion, ValidationResult,
-  getLearningPersonalities, LearningPersonality, generateVariableVariationTest, generateFlashcardMimicMock,
-  analyzeTestWithAI, FullTestAnalysisResult, GeneratedMockQuestion
+  getLearningPersonalities, LearningPersonality
 } from "../services/llm";
 import { 
-  Sparkles, RotateCcw, AlertCircle, Loader2, Award, Clock, CheckCircle2, Play
+  Sparkles, RotateCcw, AlertCircle, Loader2, Award
 } from "lucide-react";
 import MathText from "../components/MathText";
 import StatusBanner from "../components/StatusBanner";
@@ -19,7 +18,7 @@ interface RevisionProps {
   currentNav: {
     page: 'dashboard' | 'folders' | 'create' | 'revision' | 'settings' | 'tests' | 'scores' | 'mock';
     deckId?: string;
-    revisionMode?: 'flashcard' | 'quiz' | 'teach' | 'mock';
+    revisionMode?: 'flashcard' | 'quiz' | 'teach';
   };
   setCurrentNav: (nav: any) => void;
 }
@@ -28,7 +27,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Flashcard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [revisionMode, setRevisionMode] = useState<'flashcard' | 'quiz' | 'teach' | 'mock'>('flashcard');
+  const [revisionMode, setRevisionMode] = useState<'flashcard' | 'quiz' | 'teach'>('flashcard');
 
   // Flashcards session states
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -49,23 +48,6 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [teachConversation, setTeachConversation] = useState<Array<{ role: 'assistant' | 'user'; content: string; score?: number }>>([]);
   const [teachIsSubmitting, setTeachIsSubmitting] = useState(false);
   const teachChatRef = useRef<HTMLDivElement | null>(null);
-
-  // Mock Mode States
-  const [mockOption, setMockOption] = useState<'retake' | 'variation' | 'flashcard_mimic'>('retake');
-  const [subjectTests, setSubjectTests] = useState<Test[]>([]);
-  const [selectedMockTestId, setSelectedMockTestId] = useState<string>('');
-  const [mockTopicFocus, setMockTopicFocus] = useState<string>('');
-  const [mockTimerMinutes, setMockTimerMinutes] = useState<number>(60);
-  const [mockQuestions, setMockQuestions] = useState<GeneratedMockQuestion[]>([]);
-  const [mockUserAnswers, setMockUserAnswers] = useState<string[]>([]);
-  const [mockMathWork, setMockMathWork] = useState<string[]>([]);
-  const [mockTimeRemainingSeconds, setMockTimeRemainingSeconds] = useState<number | null>(null);
-  const [mockTimerActive, setMockTimerActive] = useState<boolean>(false);
-  const [mockSubmitted, setMockSubmitted] = useState<boolean>(false);
-  const [mockSubmitting, setMockSubmitting] = useState<boolean>(false);
-  const [mockGenerating, setMockGenerating] = useState<boolean>(false);
-  const [mockExamTitle, setMockExamTitle] = useState<string>('Mock Exam');
-  const [mockAnalysisResult, setMockAnalysisResult] = useState<FullTestAnalysisResult | null>(null);
 
   useEffect(() => {
     const personalities = getLearningPersonalities();
@@ -106,20 +88,6 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     }
   }, [teachConversation, revisionMode]);
 
-  useEffect(() => {
-    if (!mockTimerActive || mockTimeRemainingSeconds === null) return;
-    if (mockTimeRemainingSeconds <= 0) {
-      setMockTimerActive(false);
-      alert("⏰ Time is up! Submitting your exam now.");
-      handleSubmitMockExam();
-      return;
-    }
-    const interval = setInterval(() => {
-      setMockTimeRemainingSeconds((prev) => (prev != null && prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [mockTimerActive, mockTimeRemainingSeconds]);
-
   const loadDeckAndCards = async (deckId: string) => {
     try {
       setLoading(true);
@@ -128,21 +96,10 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
       const targetDeck = decks.find(x => x.id === deckId);
       if (targetDeck) {
         setDeck(targetDeck);
-        const folders = await getFolders();
-        const targetFolder = folders.find((f) => f.id === targetDeck.folder_id);
-        if (targetFolder?.subject_id) {
-          const sTests = await getTestsBySubject(targetFolder.subject_id);
-          setSubjectTests(sTests);
-          if (sTests.length > 0) {
-            setSelectedMockTestId(sTests[0].id);
-            if (sTests[0].time_limit_minutes) setMockTimerMinutes(sTests[0].time_limit_minutes);
-          }
-        }
-        setMockTopicFocus(targetDeck.name);
       }
 
       const mode = currentNav.revisionMode || 'flashcard';
-      setRevisionMode(mode);
+      setRevisionMode(mode as any);
 
       // Load cards
       let allCards = await getFlashcards(deckId);
@@ -163,133 +120,6 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleStartMockExam = async () => {
-    setMockGenerating(true);
-    setErrorBanner(null);
-    try {
-      let title = "Mock Exam";
-      let questionsToUse: GeneratedMockQuestion[] = [];
-
-      if (mockOption === "retake") {
-        const targetTest = subjectTests.find((t) => t.id === selectedMockTestId) || subjectTests[0];
-        if (!targetTest) throw new Error("No saved test paper found in this subject to retake. Create or scan a test first, or choose Flashcard AI Mock.");
-        title = `Retake: ${targetTest.name}`;
-        const qs = await getTestQuestions(targetTest.id);
-        questionsToUse = qs.map((q) => ({
-          type: q.type,
-          question: q.question,
-          options: q.options || undefined,
-          correctAnswer: q.correct_answer || '',
-        }));
-      } else if (mockOption === "variation") {
-        const targetTest = subjectTests.find((t) => t.id === selectedMockTestId) || subjectTests[0];
-        if (!targetTest) throw new Error("No saved test paper found in this subject for variable variation. Create or scan a test first, or choose Flashcard AI Mock.");
-        const qs = await getTestQuestions(targetTest.id);
-        const subjectName = deck ? deck.name : "Subject";
-        const generated = await generateVariableVariationTest(targetTest.name, subjectName, qs.map((q) => ({
-          type: q.type,
-          question: q.question,
-          options: q.options,
-          correctAnswer: q.correct_answer,
-        })), mockTopicFocus);
-        title = generated.title;
-        questionsToUse = generated.questions;
-      } else {
-        // Flashcard Mimic
-        const subjectName = deck ? deck.name : "Subject";
-        let exemplarQuestions: { type: string; question: string }[] = [];
-        if (subjectTests.length > 0) {
-          const sampleQs = await getTestQuestions(subjectTests[0].id);
-          exemplarQuestions = sampleQs.map((q) => ({ type: q.type, question: q.question }));
-        }
-        const generated = await generateFlashcardMimicMock(
-          subjectName,
-          mockTopicFocus || deck?.name || "Topic Focus",
-          cards.map((c) => ({ front: c.front, back: c.back })),
-          exemplarQuestions
-        );
-        title = generated.title;
-        questionsToUse = generated.questions;
-      }
-
-      setMockExamTitle(title);
-      setMockQuestions(questionsToUse);
-      setMockUserAnswers(new Array(questionsToUse.length).fill(""));
-      setMockMathWork(new Array(questionsToUse.length).fill(""));
-      setMockSubmitted(false);
-      setMockAnalysisResult(null);
-
-      // Start Countdown Timer
-      const totalSecs = (mockTimerMinutes || 60) * 60;
-      setMockTimeRemainingSeconds(totalSecs);
-      setMockTimerActive(true);
-    } catch (e: any) {
-      console.error(e);
-      setErrorBanner(e?.message || "Failed to launch Mock Exam.");
-    } finally {
-      setMockGenerating(false);
-    }
-  };
-
-  const handleSubmitMockExam = async () => {
-    if (mockSubmitting || mockSubmitted) return;
-    setMockSubmitting(true);
-    setMockTimerActive(false);
-    try {
-      const subjectName = deck ? deck.name : "Subject";
-      const folders = await getFolders();
-      const targetFolder = deck ? folders.find((f) => f.id === deck.folder_id) : null;
-      const subjectId = targetFolder?.subject_id || "";
-
-      const analysisResult = await analyzeTestWithAI(
-        mockExamTitle,
-        subjectName,
-        mockQuestions.map((q, idx) => ({
-          type: q.type,
-          question: q.question,
-          options: q.options,
-          correctAnswer: q.correctAnswer,
-          userAnswer: mockUserAnswers[idx] || "",
-          mathWork: mockMathWork[idx] || "",
-        }))
-      );
-
-      if (subjectId) {
-        const tempTestId = `mock_${Date.now()}`;
-        await saveTestAnalysis(
-          tempTestId,
-          subjectId,
-          analysisResult.summary,
-          analysisResult.strengths,
-          analysisResult.weaknesses,
-          analysisResult.recommendations,
-          analysisResult.errors
-        );
-      }
-
-      const scorePct = analysisResult.maxScore > 0
-        ? Math.round((analysisResult.calculatedScore / analysisResult.maxScore) * 100)
-        : 0;
-
-      await addRevisionHistory(null, 'mock', scorePct);
-
-      setMockAnalysisResult(analysisResult);
-      setMockSubmitted(true);
-    } catch (e: any) {
-      console.error(e);
-      setErrorBanner(e?.message || "Failed to submit and grade Mock Exam.");
-    } finally {
-      setMockSubmitting(false);
-    }
-  };
-
-  const formatTimerDisplay = (seconds: number | null) => {
-    if (seconds == null) return "00:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
   // GENERATE AI QUIZ
@@ -644,428 +474,6 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             </div>
           )}
         </div>
-      </>
-    );
-  }
-
-  // RENDER MOCK EXAM MODE
-  if (revisionMode === 'mock') {
-    return (
-      <>
-        {errorBanner && (
-          <StatusBanner
-            message={errorBanner}
-            variant="error"
-            onDismiss={() => setErrorBanner(null)}
-          />
-        )}
-
-        {/* SETUP SCREEN */}
-        {mockQuestions.length === 0 && (
-          <div style={{ maxWidth: "680px", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div>
-              <span className="page-emoji">🎯</span>
-              <h1 className="page-title">Mock Exam Arena: {deck?.name}</h1>
-              <p className="sub-description">
-                Practice under timed exam conditions with retakes, mutated variable test papers, or AI mock exams based on your flashcards.
-              </p>
-            </div>
-
-            <div className="divider" />
-
-            {/* Mode Option Selection */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                Select Mock Exam Generation Mode:
-              </label>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-                <div
-                  onClick={() => setMockOption('retake')}
-                  style={{
-                    padding: "14px",
-                    border: mockOption === 'retake' ? "2px solid var(--accent-color)" : "1px solid var(--border-color)",
-                    backgroundColor: mockOption === 'retake' ? "var(--accent-light)" : "var(--bg-secondary)",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                    🔄 Retake Past Test
-                  </div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                    Retake an existing exam paper in this subject under timed conditions.
-                  </div>
-                </div>
-
-                <div
-                  onClick={() => setMockOption('variation')}
-                  style={{
-                    padding: "14px",
-                    border: mockOption === 'variation' ? "2px solid var(--accent-color)" : "1px solid var(--border-color)",
-                    backgroundColor: mockOption === 'variation' ? "var(--accent-light)" : "var(--bg-secondary)",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                    🎲 Variable Variation
-                  </div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                    AI mutates numbers, parameters & variables of a past test paper.
-                  </div>
-                </div>
-
-                <div
-                  onClick={() => setMockOption('flashcard_mimic')}
-                  style={{
-                    padding: "14px",
-                    border: mockOption === 'flashcard_mimic' ? "2px solid var(--accent-color)" : "1px solid var(--border-color)",
-                    backgroundColor: mockOption === 'flashcard_mimic' ? "var(--accent-light)" : "var(--bg-secondary)",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                    ✨ Flashcard AI Mock
-                  </div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                    AI builds a mock test from deck flashcards, mimicking past test formats.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Select past test dropdown if retake or variation */}
-            {(mockOption === 'retake' || mockOption === 'variation') && (
-              <label className="form-label">
-                Select Past Test Paper:
-                {subjectTests.length === 0 ? (
-                  <div style={{ fontSize: "0.82rem", color: "#e11d48", marginTop: "4px" }}>
-                    No saved tests found in this subject. Scan or create a test paper in the Tests tab first, or switch to <strong>Flashcard AI Mock</strong> above!
-                  </div>
-                ) : (
-                  <select
-                    className="notion-input"
-                    value={selectedMockTestId}
-                    onChange={(e) => {
-                      setSelectedMockTestId(e.target.value);
-                      const selectedT = subjectTests.find(t => t.id === e.target.value);
-                      if (selectedT?.time_limit_minutes) setMockTimerMinutes(selectedT.time_limit_minutes);
-                    }}
-                    style={{ marginTop: "6px", width: "100%" }}
-                  >
-                    {subjectTests.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.time_limit_minutes ? `${t.time_limit_minutes} mins` : 'No timer set'})
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </label>
-            )}
-
-            {/* Topic Focus Input */}
-            <label className="form-label">
-              Topic / Concept Focus (Optional):
-              <input
-                className="form-input"
-                type="text"
-                value={mockTopicFocus}
-                onChange={(e) => setMockTopicFocus(e.target.value)}
-                placeholder="e.g. Differentiation & Integration, Thermodynamics..."
-                style={{ marginTop: "6px" }}
-              />
-            </label>
-
-            {/* Timer Minutes Input */}
-            <label className="form-label">
-              Allocated Exam Timer (Minutes):
-              <input
-                className="form-input"
-                type="number"
-                value={mockTimerMinutes}
-                onChange={(e) => setMockTimerMinutes(Number(e.target.value) || 30)}
-                placeholder="60"
-                style={{ marginTop: "6px" }}
-              />
-            </label>
-
-            <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-              <button className="notion-btn secondary" onClick={() => setCurrentNav({ page: "dashboard" })}>
-                Cancel
-              </button>
-              <button
-                className="notion-btn primary"
-                onClick={handleStartMockExam}
-                disabled={mockGenerating || (mockOption !== 'flashcard_mimic' && subjectTests.length === 0)}
-                style={{ flex: 1, padding: "10px 16px" }}
-              >
-                {mockGenerating ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={16} />}
-                {mockGenerating ? "Generating Timed Mock Exam..." : "Start Timed Mock Exam"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ACTIVE EXAM INTERFACE */}
-        {mockQuestions.length > 0 && !mockSubmitted && (
-          <div style={{ maxWidth: "800px", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Sticky Header with Timer */}
-            <div
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 100,
-                backgroundColor: "var(--bg-primary)",
-                padding: "14px 18px",
-                borderRadius: "10px",
-                border: "1px solid var(--border-color)",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "var(--text-primary)" }}>
-                  {mockExamTitle}
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                  {mockQuestions.length} Questions · Timed Examination
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                {/* Timer Badge */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "0.95rem",
-                    fontWeight: 800,
-                    padding: "6px 14px",
-                    borderRadius: "20px",
-                    backgroundColor: (mockTimeRemainingSeconds != null && mockTimeRemainingSeconds < 300) ? "rgba(225, 29, 72, 0.1)" : "var(--bg-secondary)",
-                    color: (mockTimeRemainingSeconds != null && mockTimeRemainingSeconds < 300) ? "#e11d48" : "var(--accent-color)",
-                    border: "1px solid var(--border-color)",
-                  }}
-                >
-                  <Clock size={16} />
-                  <span>{formatTimerDisplay(mockTimeRemainingSeconds)}</span>
-                </div>
-
-                <button
-                  className="notion-btn primary"
-                  onClick={handleSubmitMockExam}
-                  disabled={mockSubmitting}
-                >
-                  {mockSubmitting ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={14} />}
-                  Submit Exam
-                </button>
-              </div>
-            </div>
-
-            {/* Questions Paper */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {mockQuestions.map((q, idx) => (
-                <div key={idx} className="quiz-card" style={{ padding: "18px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-color)", textTransform: "uppercase" }}>
-                      Question {idx + 1} of {mockQuestions.length} ({q.type})
-                    </span>
-                  </div>
-
-                  <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)", marginBottom: "12px" }}>
-                    <MathText>{q.question}</MathText>
-                  </div>
-
-                  {/* Multiple Choice Options */}
-                  {q.type === 'multiple-choice' && q.options && q.options.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
-                      {q.options.map((opt, optIdx) => (
-                        <label
-                          key={optIdx}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            padding: "8px 12px",
-                            backgroundColor: mockUserAnswers[idx] === opt ? "var(--accent-light)" : "var(--bg-secondary)",
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontSize: "0.88rem",
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name={`mock-q-${idx}`}
-                            checked={mockUserAnswers[idx] === opt}
-                            onChange={() => {
-                              const updated = [...mockUserAnswers];
-                              updated[idx] = opt;
-                              setMockUserAnswers(updated);
-                            }}
-                          />
-                          <MathText>{opt}</MathText>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Short / Long Answer Input */}
-                  {q.type !== 'multiple-choice' && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>
-                      <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary)" }}>
-                        Your Answer:
-                      </label>
-                      <textarea
-                        className="form-input"
-                        rows={2}
-                        value={mockUserAnswers[idx]}
-                        onChange={(e) => {
-                          const updated = [...mockUserAnswers];
-                          updated[idx] = e.target.value;
-                          setMockUserAnswers(updated);
-                        }}
-                        placeholder="Write your answer here..."
-                      />
-
-                      {/* Math Work / Steps Shown for Maths Questions */}
-                      {q.type === 'maths' && (
-                        <div style={{ marginTop: "6px" }}>
-                          <label style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--accent-color)" }}>
-                            🔢 Math Working Out / Derivation (Optional):
-                          </label>
-                          <textarea
-                            className="form-input"
-                            rows={3}
-                            value={mockMathWork[idx]}
-                            onChange={(e) => {
-                              const updated = [...mockMathWork];
-                              updated[idx] = e.target.value;
-                              setMockMathWork(updated);
-                            }}
-                            placeholder="Show step-by-step mathematical working out..."
-                            style={{ marginTop: "4px" }}
-                          />
-                          {mockMathWork[idx].trim() !== "" && (
-                            <div style={{ marginTop: "6px", padding: "8px", backgroundColor: "var(--bg-secondary)", borderRadius: "6px", border: "1px solid var(--border-color)" }}>
-                              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "2px" }}>Math Preview:</div>
-                              <MathText>{mockMathWork[idx]}</MathText>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
-              <button
-                className="notion-btn primary"
-                onClick={handleSubmitMockExam}
-                disabled={mockSubmitting}
-                style={{ padding: "10px 24px", fontSize: "0.95rem" }}
-              >
-                {mockSubmitting ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={16} />}
-                Submit & Grade Mock Exam
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* POST-EXAM RESULTS SCREEN */}
-        {mockSubmitted && mockAnalysisResult && (
-          <div style={{ maxWidth: "800px", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ border: "1px solid var(--border-color)", borderRadius: "12px", padding: "24px", backgroundColor: "var(--bg-secondary)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <div>
-                  <span className="page-emoji">🎉</span>
-                  <h1 className="page-title" style={{ margin: 0 }}>Mock Exam Complete!</h1>
-                  <p className="sub-description" style={{ margin: 0, marginTop: "4px" }}>
-                    {mockExamTitle}
-                  </p>
-                </div>
-
-                <div style={{ padding: "8px 16px", borderRadius: "20px", backgroundColor: "var(--bg-primary)", border: "1px solid var(--border-color)", fontWeight: 800, fontSize: "1.2rem", color: "var(--accent-color)" }}>
-                  {mockAnalysisResult.calculatedScore} / {mockAnalysisResult.maxScore} ({Math.round((mockAnalysisResult.calculatedScore / (mockAnalysisResult.maxScore || 100)) * 100)}%)
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {/* Summary */}
-                <div style={{ padding: "14px", backgroundColor: "var(--bg-primary)", borderRadius: "8px", borderLeft: "4px solid var(--accent-color)" }}>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-color)", textTransform: "uppercase" }}>
-                    Diagnostic Performance Overview
-                  </div>
-                  <div style={{ fontSize: "0.9rem", color: "var(--text-primary)", marginTop: "4px", lineHeight: 1.6 }}>
-                    {mockAnalysisResult.summary}
-                  </div>
-                </div>
-
-                {/* Strengths & Weaknesses */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  {mockAnalysisResult.strengths && (
-                    <div style={{ padding: "14px", backgroundColor: "rgba(16, 185, 129, 0.06)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "8px" }}>
-                      <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--success-color)", marginBottom: "4px" }}>
-                        💪 Concepts Mastered
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: 1.5 }}>
-                        {mockAnalysisResult.strengths}
-                      </div>
-                    </div>
-                  )}
-
-                  {mockAnalysisResult.weaknesses && (
-                    <div style={{ padding: "14px", backgroundColor: "rgba(139, 92, 246, 0.06)", border: "1px solid rgba(139, 92, 246, 0.2)", borderRadius: "8px" }}>
-                      <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#8b5cf6", marginBottom: "4px" }}>
-                        🎯 Study Focus Points
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: 1.5 }}>
-                        {mockAnalysisResult.weaknesses}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Recommendations */}
-                {mockAnalysisResult.recommendations && (
-                  <div style={{ padding: "14px", backgroundColor: "var(--bg-primary)", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-secondary)", marginBottom: "4px" }}>
-                      📌 Study Advice & Next Steps
-                    </div>
-                    <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", lineHeight: 1.5 }}>
-                      {mockAnalysisResult.recommendations}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-                <button
-                  className="notion-btn secondary"
-                  onClick={() => {
-                    setMockQuestions([]);
-                    setMockSubmitted(false);
-                  }}
-                >
-                  Take Another Mock
-                </button>
-                <button
-                  className="notion-btn primary"
-                  onClick={() => setCurrentNav({ page: "scores" })}
-                >
-                  View Scores & Analytics Tab
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </>
     );
   }
