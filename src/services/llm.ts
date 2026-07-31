@@ -28,6 +28,9 @@ export interface GeneratedFlashcard {
   front: string;
   back: string;
   tags?: string;
+  image_url?: string;
+  front_image_url?: string;
+  back_image_url?: string;
 }
 
 export interface PdfGeneratedFlashcard extends GeneratedFlashcard {
@@ -435,6 +438,89 @@ Rules:
     sourceContext: item.sourceContext?.trim() || "",
     sourceMode: "document" as const,
   }));
+}
+
+/**
+ * AI scans PDF pages with vision to locate a specific diagram requested by user prompt,
+ * extracts flashcard text, and returns the diagram image URL attached to the card.
+ */
+export async function extractDiagramFromPdfWithAI(
+  pdfArrayBuffer: ArrayBuffer,
+  diagramPrompt: string,
+  pdfExtraction: { pageCount: number; pages: { pageNumber: number; text: string }[] }
+): Promise<PdfGeneratedFlashcard & { front_image_url?: string }> {
+  const { renderPdfPageToImage } = await import("./pdf");
+  const { cropWebPImage } = await import("../utils/image");
+
+  // Step 1: Find target page matching prompt keywords or default to page 1
+  let targetPageNumber = 1;
+  const promptLower = diagramPrompt.toLowerCase();
+  
+  for (const p of pdfExtraction.pages) {
+    if (promptLower.split(/\s+/).some((kw) => kw.length > 3 && p.text.toLowerCase().includes(kw))) {
+      targetPageNumber = p.pageNumber;
+      break;
+    }
+  }
+
+  // Render high-res PDF page as WebP image
+  const pageImageWebP = await renderPdfPageToImage(pdfArrayBuffer, targetPageNumber, 2.0);
+  const base64Data = pageImageWebP.replace(/^data:image\/[a-z]+;base64,/, "");
+
+  const systemPrompt = `You are an expert AI for locating and cropping educational diagrams from PDF pages.
+Look at the attached PDF page image and locate the actual picture/diagram requested: "${diagramPrompt}".
+
+Output ONLY a single valid JSON object. Do not include markdown code blocks or text outside JSON.
+Format:
+{
+  "front": "Concise concept name or question about the diagram (e.g. Photosynthesis Process Diagram)",
+  "back": "Detailed step-by-step breakdown or explanation of the diagram components shown in the image",
+  "tags": "diagram, pdf, visual",
+  "sourceTerm": "Diagram Name",
+  "sourcePage": ${targetPageNumber},
+  "box_2d": [ymin, xmin, ymax, xmax]
+}
+
+Rules for "box_2d":
+- Provide normalized 0..1000 integer bounding box coordinates [ymin, xmin, ymax, xmax] around ONLY the actual picture/diagram graphics (excluding surrounding paragraph text).
+- For example, if the diagram is in the top-middle region of the page, box_2d might be [50, 150, 450, 850].`;
+
+  const userPrompt = `Target Diagram Request: "${diagramPrompt}"\nPage text context:\n${pdfExtraction.pages.find((p) => p.pageNumber === targetPageNumber)?.text || ""}`;
+
+  const responseText = await callLLM("scan", userPrompt, systemPrompt, base64Data, "image/webp");
+  
+  const cleanJson = responseText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  let parsed: any = {};
+  try {
+    parsed = JSON.parse(cleanJson);
+  } catch {
+    const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      parsed = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error("AI response was not valid JSON format.");
+    }
+  }
+
+  // Crop the actual picture/diagram image using AI bounding box
+  let croppedDiagramWebP = pageImageWebP;
+  if (Array.isArray(parsed.box_2d) && parsed.box_2d.length === 4) {
+    try {
+      croppedDiagramWebP = await cropWebPImage(pageImageWebP, parsed.box_2d, 0.90);
+    } catch (e) {
+      console.warn("Failed to crop diagram with box_2d, falling back to page image:", e);
+    }
+  }
+
+  return {
+    front: parsed.front || diagramPrompt,
+    back: "", // No text description — picture only on the back!
+    tags: parsed.tags || "diagram, pdf",
+    sourceTerm: parsed.sourceTerm || parsed.front || diagramPrompt,
+    sourcePage: targetPageNumber,
+    sourceMode: "document",
+    back_image_url: croppedDiagramWebP,
+  };
 }
 
 /**

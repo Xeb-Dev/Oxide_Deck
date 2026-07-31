@@ -1,4 +1,5 @@
 import { pdfjs } from "react-pdf";
+import { convertToWebP } from "../utils/image";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -214,4 +215,26 @@ export function buildPdfHighlightMap(matches: PdfHighlightMatch[]): Record<numbe
       Array.from(itemIndexes).sort((a, b) => a - b),
     ]),
   );
+}
+
+export async function renderPdfPageToImage(arrayBuffer: ArrayBuffer, pageNumber: number, scale = 1.5): Promise<string> {
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) });
+  const pdf = await loadingTask.promise;
+
+  const validPageNum = Math.max(1, Math.min(pageNumber, pdf.numPages));
+  const page = await pdf.getPage(validPageNum);
+  const viewport = page.getViewport({ scale });
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas 2D context unavailable.");
+  }
+
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({ canvasContext: context, viewport } as any).promise;
+  const rawDataUrl = canvas.toDataURL("image/png");
+  return convertToWebP(rawDataUrl, 0.85);
 }

@@ -10,6 +10,7 @@ import {
   scanPdfTextForFlashcards,
   smartScanPdfForFlashcards,
   extractDiagramWithAI,
+  extractDiagramFromPdfWithAI,
   GeneratedFlashcard,
   PdfGeneratedFlashcard,
 } from "../services/llm";
@@ -129,6 +130,7 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
   const [pdfSourceCards, setPdfSourceCards] = useState<PdfGeneratedFlashcard[]>([]);
 
   const [pdfHighlightMap, setPdfHighlightMap] = useState<Record<number, number[]>>({});
+  const [pdfDiagramPrompt, setPdfDiagramPrompt] = useState("");
 
 
 
@@ -548,6 +550,31 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
     }
   };
 
+  const handleExtractPdfDiagram = async () => {
+    if (!pdfFileData || !pdfExtraction || !pdfDiagramPrompt.trim()) return;
+
+    try {
+      setLoading(true);
+      showStatus("AI Vision is analyzing PDF pages to extract your requested diagram...", "info");
+
+      const card = await extractDiagramFromPdfWithAI(pdfFileData.buffer, pdfDiagramPrompt.trim(), pdfExtraction);
+
+      setPdfSourceCards((prev) => [...prev, card]);
+      setExtractedCards((prev) => {
+        const next = [...prev, card];
+        setSelectedCardIndexes(buildSelectedCardMap(next));
+        return next;
+      });
+      setPdfDiagramPrompt("");
+      showStatus(`Diagram flashcard created successfully with WebP graphic attached! Review below.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      showStatus(e.message || "Failed to extract diagram from PDF. Verify Vision model config in Settings.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // AI URL PARSER
   const handleScanUrl = async () => {
     if (!aiUrl.trim()) return;
@@ -757,26 +784,17 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
   // BULK IMPORT
 
   const handleImportSelected = async () => {
-
     if (!selectedDeckId) {
-
       showStatus("Please select a target deck first.", "warning");
-
       return;
-
     }
 
     const importList = extractedCards.filter((_, idx) => selectedCardIndexes[idx]);
 
     if (importList.length === 0) {
-
       showStatus("No cards selected for import.", "warning");
-
       return;
-
     }
-
-
 
     try {
 
@@ -786,7 +804,23 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
       for (const card of importList) {
 
-        await createFlashcard(selectedDeckId, card.front, card.back, card.tags || "");
+        await createFlashcard(
+
+          selectedDeckId,
+
+          card.front,
+
+          card.back,
+
+          card.tags || "",
+
+          card.image_url || card.front_image_url || null,
+
+          card.front_image_url || null,
+
+          card.back_image_url || null
+
+        );
 
       }
 
@@ -1336,6 +1370,55 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
               </div>
             </div>
 
+            {/* AI Diagram Extraction Prompt */}
+            {pdfFileData && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  padding: "16px",
+                  border: "1px solid var(--accent-color)",
+                  borderRadius: "10px",
+                  backgroundColor: "var(--bg-secondary)",
+                  boxShadow: "0 2px 8px rgba(99, 102, 241, 0.05)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <ImageIcon size={18} color="var(--accent-color)" />
+                  <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>Find Specific Diagram in PDF</span>
+                </div>
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                  Prompt the AI to scan PDF page graphics for specific diagrams (e.g. <i>"Find the heart anatomy diagram on page 2"</i> or <i>"Find the photosynthesis process diagram"</i>).
+                </p>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <input
+                    type="text"
+                    className="notion-input"
+                    value={pdfDiagramPrompt}
+                    onChange={(e) => setPdfDiagramPrompt(e.target.value)}
+                    placeholder="e.g. Find the carbon cycle diagram and explain its stages..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && pdfDiagramPrompt.trim() && !loading) {
+                        e.preventDefault();
+                        handleExtractPdfDiagram();
+                      }
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="notion-btn"
+                    onClick={handleExtractPdfDiagram}
+                    disabled={loading || !pdfDiagramPrompt.trim()}
+                    style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}
+                  >
+                    <Sparkles size={15} /> Extract Diagram Flashcard
+                  </button>
+                </div>
+              </div>
+            )}
+
             <PdfViewer
               fileData={pdfFileData}
               fileName={pdfFileName}
@@ -1656,6 +1739,21 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
                       />
 
                     </div>
+
+                    {/* Attached WebP Diagram Image Preview */}
+                    {card.back_image_url && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--accent-color)", backgroundColor: "var(--bg-primary)" }}>
+                        <img 
+                          src={card.back_image_url} 
+                          alt="Diagram Graphic" 
+                          style={{ maxWidth: "140px", maxHeight: "90px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} 
+                        />
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-color)" }}>📷 Extracted WebP Diagram Picture Attached (Back Face Only)</span>
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Will display exclusively on Back face of flashcard during study & revision</span>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="notion-input-group">
 
