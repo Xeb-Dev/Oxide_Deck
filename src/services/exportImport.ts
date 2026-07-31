@@ -197,6 +197,136 @@ export async function exportSubject(subjectId: string): Promise<string> {
   return filename;
 }
 
+// Payload getters for QR Code sharing
+export async function getDeckPackagePayload(deckId: string): Promise<any> {
+  const allDecks = await getDecks();
+  const deck = allDecks.find((d) => d.id === deckId);
+  if (!deck) throw new Error("Deck not found.");
+  const cards = await getFlashcards(deckId);
+
+  return {
+    version: "1.0",
+    type: "deck",
+    exported_at: new Date().toISOString(),
+    deck: {
+      name: deck.name,
+      icon: deck.icon,
+      description: deck.description,
+    },
+    flashcards: cards.map((c) => ({
+      front: c.front,
+      back: c.back,
+      tags: c.tags,
+      image_url: c.image_url || null,
+      front_image_url: c.front_image_url || null,
+      back_image_url: c.back_image_url || null,
+    })),
+  };
+}
+
+export async function getFolderPackagePayload(folderId: string): Promise<any> {
+  const allFolders = await getFolders();
+  const rootFolder = allFolders.find((f) => f.id === folderId);
+  if (!rootFolder) throw new Error("Folder not found.");
+
+  const folderIds = new Set<string>([folderId]);
+  let addedNew = true;
+  while (addedNew) {
+    addedNew = false;
+    for (const f of allFolders) {
+      if (f.parent_folder_id && folderIds.has(f.parent_folder_id) && !folderIds.has(f.id)) {
+        folderIds.add(f.id);
+        addedNew = true;
+      }
+    }
+  }
+
+  const subfolders = allFolders.filter((f) => folderIds.has(f.id));
+  const allDecks = await getDecks();
+  const exportedDecks = allDecks.filter((d) => d.folder_id && folderIds.has(d.folder_id));
+
+  const flashcardsPayload: any[] = [];
+  for (const deck of exportedDecks) {
+    const cards = await getFlashcards(deck.id);
+    for (const c of cards) {
+      flashcardsPayload.push({
+        _deck_temp_id: deck.id,
+        front: c.front,
+        back: c.back,
+        tags: c.tags,
+        image_url: c.image_url || null,
+        front_image_url: c.front_image_url || null,
+        back_image_url: c.back_image_url || null,
+      });
+    }
+  }
+
+  return {
+    version: "1.0",
+    type: "folder",
+    exported_at: new Date().toISOString(),
+    root_folder_id: rootFolder.id,
+    folders: subfolders,
+    decks: exportedDecks,
+    flashcards: flashcardsPayload,
+  };
+}
+
+export async function getSubjectPackagePayload(subjectId: string): Promise<any> {
+  const allSubjects = await getSubjects();
+  const subject = allSubjects.find((s) => s.id === subjectId);
+  if (!subject) throw new Error("Subject not found.");
+
+  const allFolders = await getFolders();
+  const subjectFolders = allFolders.filter((f) => f.subject_id === subjectId);
+
+  const folderIds = new Set<string>(subjectFolders.map((f) => f.id));
+  let addedNew = true;
+  while (addedNew) {
+    addedNew = false;
+    for (const f of allFolders) {
+      if (f.parent_folder_id && folderIds.has(f.parent_folder_id) && !folderIds.has(f.id)) {
+        folderIds.add(f.id);
+        addedNew = true;
+      }
+    }
+  }
+
+  const exportedFolders = allFolders.filter((f) => folderIds.has(f.id));
+  const allDecks = await getDecks();
+  const exportedDecks = allDecks.filter((d) => d.folder_id && folderIds.has(d.folder_id));
+
+  const flashcardsPayload: any[] = [];
+  for (const deck of exportedDecks) {
+    const cards = await getFlashcards(deck.id);
+    for (const c of cards) {
+      flashcardsPayload.push({
+        _deck_temp_id: deck.id,
+        front: c.front,
+        back: c.back,
+        tags: c.tags,
+        image_url: c.image_url || null,
+        front_image_url: c.front_image_url || null,
+        back_image_url: c.back_image_url || null,
+      });
+    }
+  }
+
+  return {
+    version: "1.0",
+    type: "subject",
+    exported_at: new Date().toISOString(),
+    subject: {
+      name: subject.name,
+      icon: subject.icon,
+      color: subject.color,
+    },
+    folders: exportedFolders,
+    decks: exportedDecks,
+    flashcards: flashcardsPayload,
+  };
+}
+
 async function getValidSubjectId(subjectId?: string | null): Promise<string | null> {
   if (!subjectId) return null;
   const subjects = await getSubjects();

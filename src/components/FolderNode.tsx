@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit3, Plus, Trash2, Download } from "lucide-react";
+import { Edit3, Plus, Trash2, Download, QrCode } from "lucide-react";
 import {
   Deck,
   Folder,
@@ -27,6 +27,8 @@ interface FolderNodeProps {
   onOpenDeck: (deckId: string) => void;
   onExportFolder?: (folderId: string, e: React.MouseEvent) => void;
   onExportDeck?: (deckId: string, e: React.MouseEvent) => void;
+  onQrShareFolder?: (folder: Folder, e: React.MouseEvent) => void;
+  onQrShareDeck?: (deck: Deck, e: React.MouseEvent) => void;
 }
 
 export default function FolderNode({
@@ -46,6 +48,8 @@ export default function FolderNode({
   onOpenDeck,
   onExportFolder,
   onExportDeck,
+  onQrShareFolder,
+  onQrShareDeck,
 }: FolderNodeProps) {
   const folderDecks = decks.filter((d) => d.folder_id === folder.id);
   const childFolders = getChildFolders(folders, folder.id);
@@ -126,6 +130,15 @@ export default function FolderNode({
           >
             <Plus size={14} />
           </button>
+          {onQrShareFolder && (
+            <button
+              className="theme-toggle-btn"
+              title="Share via Encrypted QR Code"
+              onClick={(e) => onQrShareFolder(folder, e)}
+            >
+              <QrCode size={14} />
+            </button>
+          )}
           {onExportFolder && (
             <button
               className="theme-toggle-btn"
@@ -170,6 +183,8 @@ export default function FolderNode({
                 onOpenDeck={onOpenDeck}
                 onExportFolder={onExportFolder}
                 onExportDeck={onExportDeck}
+                onQrShareFolder={onQrShareFolder}
+                onQrShareDeck={onQrShareDeck}
               />
             ))}
           </div>
@@ -210,6 +225,16 @@ export default function FolderNode({
                 <div className="deck-card-meta">
                   <span>Click to open</span>
                   <div style={{ display: "flex", gap: "4px" }}>
+                    {onQrShareDeck && (
+                      <button
+                        className="theme-toggle-btn"
+                        style={{ padding: "2px" }}
+                        title="Share via Encrypted QR Code"
+                        onClick={(e) => onQrShareDeck(deck, e)}
+                      >
+                        <QrCode size={12} />
+                      </button>
+                    )}
                     {onExportDeck && (
                       <button
                         className="theme-toggle-btn"

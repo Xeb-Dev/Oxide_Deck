@@ -8,12 +8,14 @@ import {
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
 import { 
-  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload
+  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload, QrCode
 } from "lucide-react";
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 import FolderNode from "../components/FolderNode";
+import QrShareModal from "../components/QrShareModal";
+import QrScanModal from "../components/QrScanModal";
 import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
 import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../utils/folderTree";
 import { convertToWebP } from "../utils/image";
@@ -77,6 +79,47 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
   const [subjectName, setSubjectName] = useState("");
   const [subjectIcon, setSubjectIcon] = useState("📚");
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+
+  // QR Code Share & Scan Modals
+  const [qrShareItem, setQrShareItem] = useState<{
+    itemType: "deck" | "folder" | "subject";
+    itemId: string;
+    itemName: string;
+    itemIcon: string;
+  } | null>(null);
+  const [qrScanModalOpen, setQrScanModalOpen] = useState(false);
+
+  const handleQrShareDeck = (deck: Deck, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setQrShareItem({
+      itemType: "deck",
+      itemId: deck.id,
+      itemName: deck.name,
+      itemIcon: deck.icon || "🎴",
+    });
+  };
+
+  const handleQrShareFolder = (folder: Folder, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setQrShareItem({
+      itemType: "folder",
+      itemId: folder.id,
+      itemName: folder.name,
+      itemIcon: folder.icon || "📁",
+    });
+  };
+
+  const handleQrShareSubject = (subjectId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const subj = subjects.find((s) => s.id === subjectId);
+    if (!subj) return;
+    setQrShareItem({
+      itemType: "subject",
+      itemId: subj.id,
+      itemName: subj.name,
+      itemIcon: subj.icon || "📚",
+    });
+  };
 
   // Flashcard forms state
   const [showCardModal, setShowCardModal] = useState(false);
@@ -527,6 +570,14 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             </button>
             <button 
               className="notion-btn secondary"
+              title="Share via Encrypted QR Code"
+              onClick={(e) => handleQrShareDeck(selectedDeck, e)}
+            >
+              <QrCode size={16} />
+              Share QR
+            </button>
+            <button 
+              className="notion-btn secondary"
               title="Export Deck (.oxdeck)"
               onClick={(e) => handleExportDeck(selectedDeck.id, e)}
             >
@@ -772,6 +823,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
         <div style={{ display: "flex", gap: "8px" }}>
           <button 
             className="notion-btn secondary" 
+            title="Scan or paste encrypted QR Code payload"
+            onClick={() => setQrScanModalOpen(true)}
+          >
+            <QrCode size={16} /> Import via QR
+          </button>
+          <button 
+            className="notion-btn secondary" 
             title="Import .oxdeck, .oxfolder, or .oxsubject package"
             onClick={() => document.getElementById('oxide-package-import-input')?.click()}
           >
@@ -860,6 +918,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 <div style={{ display: "flex", gap: "6px" }}>
                   <button 
                     className="theme-toggle-btn" 
+                    title="Share Subject via Encrypted QR Code"
+                    onClick={(e) => handleQrShareSubject(subject.id, e)}
+                  >
+                    <QrCode size={14} />
+                  </button>
+                  <button 
+                    className="theme-toggle-btn" 
                     title="Export Subject (.oxsubject)"
                     onClick={(e) => handleExportSubject(subject.id, e)}
                   >
@@ -894,6 +959,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
                     onExportFolder={handleExportFolder}
                     onExportDeck={handleExportDeck}
+                    onQrShareFolder={handleQrShareFolder}
+                    onQrShareDeck={handleQrShareDeck}
                   />
                 ))}
 
@@ -963,6 +1030,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
                 onExportFolder={handleExportFolder}
                 onExportDeck={handleExportDeck}
+                onQrShareFolder={handleQrShareFolder}
+                onQrShareDeck={handleQrShareDeck}
               />
             ))}
           </div>
@@ -1239,6 +1308,30 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             </form>
           </div>
         </div>
+      )}
+
+      {/* QR Code Share Modal */}
+      {qrShareItem && (
+        <QrShareModal
+          itemType={qrShareItem.itemType}
+          itemId={qrShareItem.itemId}
+          itemName={qrShareItem.itemName}
+          itemIcon={qrShareItem.itemIcon}
+          onClose={() => setQrShareItem(null)}
+        />
+      )}
+
+      {/* QR Code Scan / Import Modal */}
+      {qrScanModalOpen && (
+        <QrScanModal
+          onClose={() => setQrScanModalOpen(false)}
+          onSuccess={(msg) => {
+            setBanner({ message: msg, variant: "success" });
+            loadData();
+            window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+            if (onSidebarRefresh) onSidebarRefresh();
+          }}
+        />
       )}
     </>
   );
