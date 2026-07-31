@@ -16,6 +16,7 @@ import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 import FolderNode from "../components/FolderNode";
 import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
 import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../utils/folderTree";
+import { convertToWebP } from "../utils/image";
 
 interface FoldersProps {
   currentNav: {
@@ -81,6 +82,10 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
   const [cardFront, setCardFront] = useState("");
   const [cardBack, setCardBack] = useState("");
   const [cardTags, setCardTags] = useState("");
+  const [cardFrontImageUrl, setCardFrontImageUrl] = useState<string | null>(null);
+  const [cardBackImageUrl, setCardBackImageUrl] = useState<string | null>(null);
+  const [isDraggingOverFrontModal, setIsDraggingOverFrontModal] = useState(false);
+  const [isDraggingOverBackModal, setIsDraggingOverBackModal] = useState(false);
   const [editingCard, setEditingCard] = useState<Flashcard | null>(null);
 
   useEffect(() => {
@@ -218,17 +223,19 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const handleCreateCard = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cardFront.trim() || !cardBack.trim() || !selectedDeck) return;
+    if ((!cardFront.trim() && !cardFrontImageUrl) || (!cardBack.trim() && !cardBackImageUrl) || !selectedDeck) return;
 
     try {
       if (editingCard) {
-        await updateFlashcard(editingCard.id, cardFront, cardBack, cardTags);
+        await updateFlashcard(editingCard.id, cardFront || "(Image)", cardBack || "(Image)", cardTags, null, cardFrontImageUrl, cardBackImageUrl);
       } else {
-        await createFlashcard(selectedDeck.id, cardFront, cardBack, cardTags);
+        await createFlashcard(selectedDeck.id, cardFront || "(Image)", cardBack || "(Image)", cardTags, null, cardFrontImageUrl, cardBackImageUrl);
       }
       setCardFront("");
       setCardBack("");
       setCardTags("");
+      setCardFrontImageUrl(null);
+      setCardBackImageUrl(null);
       setEditingCard(null);
       setShowCardModal(false);
       
@@ -238,6 +245,46 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     } catch (e) {
       console.error(e);
       showError("Failed to save flashcard: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  const processCardModalImage = async (file: File, side: 'front' | 'back') => {
+    try {
+      setBanner({ message: `Converting image to WebP format for ${side.toUpperCase()}...`, variant: "info" });
+      const webpUrl = await convertToWebP(file);
+      if (side === 'front') {
+        setCardFrontImageUrl(webpUrl);
+      } else {
+        setCardBackImageUrl(webpUrl);
+      }
+      setBanner({ message: `Image attached to ${side.toUpperCase()} (WebP format)!`, variant: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showError("Failed to process image into WebP format.");
+    }
+  };
+
+  const handleCardModalDrop = async (e: React.DragEvent, side: 'front' | 'back') => {
+    e.preventDefault();
+    if (side === 'front') setIsDraggingOverFrontModal(false);
+    else setIsDraggingOverBackModal(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find((f) => f.type.startsWith("image/"));
+    if (imageFile) {
+      await processCardModalImage(imageFile, side);
+    }
+  };
+
+  const handleCardModalPaste = async (e: React.ClipboardEvent, side: 'front' | 'back') => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        e.preventDefault();
+        await processCardModalImage(file, side);
+      }
     }
   };
 
@@ -361,6 +408,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setCardFront(card.front);
     setCardBack(card.back);
     setCardTags(card.tags || "");
+    setCardFrontImageUrl(card.front_image_url || card.image_url || null);
+    setCardBackImageUrl(card.back_image_url || null);
     setShowCardModal(true);
   };
 
@@ -464,11 +513,25 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
                     <div>
                       <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)" }}>Front:</span>
-                      <MathText as="div" style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)", marginTop: "2px" }}>{card.front}</MathText>
+                      {(card.front_image_url || card.image_url) && (
+                        <div style={{ marginTop: "4px" }}>
+                          <img src={card.front_image_url || card.image_url!} alt="Front Image" style={{ maxWidth: "100%", maxHeight: "140px", objectFit: "contain", borderRadius: "6px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                        </div>
+                      )}
+                      {card.front && card.front !== "(Image)" && (
+                        <MathText as="div" style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)", marginTop: "2px" }}>{card.front}</MathText>
+                      )}
                     </div>
                     <div>
                       <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)" }}>Back:</span>
-                      <MathText as="div" style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginTop: "2px" }}>{card.back}</MathText>
+                      {card.back_image_url && (
+                        <div style={{ marginTop: "4px" }}>
+                          <img src={card.back_image_url} alt="Back Image" style={{ maxWidth: "100%", maxHeight: "140px", objectFit: "contain", borderRadius: "6px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                        </div>
+                      )}
+                      {card.back && card.back !== "(Image)" && (
+                        <MathText as="div" style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginTop: "2px" }}>{card.back}</MathText>
+                      )}
                     </div>
                   </div>
 
@@ -518,10 +581,10 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   padding: "40px", 
                   textAlign: "center", 
                   color: "var(--text-muted)",
-                  fontSize: "0.92rem"
+                  fontSize: "0.9rem"
                 }}
               >
-                No flashcards in this deck yet. Click <strong>Add Card</strong> to create one manually, or use the <strong>AI scanner</strong> to auto-extract definitions!
+                No flashcards in this deck yet. Click <strong>Add Card</strong> above or go to <strong>Create Flashcards</strong> tab!
               </div>
             )}
           </div>
@@ -538,27 +601,62 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <form onSubmit={handleCreateCard}>
                 <div className="notion-modal-content">
                   <div className="notion-input-group">
-                    <label>Front (Question / Concept)</label>
+                    <label style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Front (Question / Concept)</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Front</span>
+                    </label>
                     <textarea 
                       className="notion-input" 
                       rows={3} 
                       value={cardFront}
                       onChange={(e) => setCardFront(e.target.value)}
-                      placeholder="e.g. Mitochondria"
-                      required
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingOverFrontModal(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); setIsDraggingOverFrontModal(false); }}
+                      onDrop={(e) => handleCardModalDrop(e, 'front')}
+                      onPaste={(e) => handleCardModalPaste(e, 'front')}
+                      placeholder="Front question/term... (or drop image here for Front)"
+                      style={{
+                        border: isDraggingOverFrontModal ? "2px dashed var(--accent-color)" : undefined,
+                        backgroundColor: isDraggingOverFrontModal ? "rgba(99, 102, 241, 0.08)" : undefined,
+                      }}
                     />
+                    {cardFrontImageUrl && (
+                      <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
+                        <img src={cardFrontImageUrl} alt="Front WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                        <span style={{ flex: 1, fontSize: "0.76rem", fontWeight: 600, color: "var(--accent-color)" }}>📷 Front Image Attached</span>
+                        <button type="button" className="notion-btn secondary" style={{ padding: "2px 6px", fontSize: "0.7rem", color: "#e11d48" }} onClick={() => setCardFrontImageUrl(null)}>Remove</button>
+                      </div>
+                    )}
                   </div>
                   <div className="notion-input-group">
-                    <label>Back (Answer / Definition)</label>
+                    <label style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Back (Answer / Definition)</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Back</span>
+                    </label>
                     <textarea 
                       className="notion-input" 
                       rows={4} 
                       value={cardBack}
                       onChange={(e) => setCardBack(e.target.value)}
-                      placeholder="e.g. Powerhouse of the cell, generates chemical energy in the form of ATP."
-                      required
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBackModal(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); setIsDraggingOverBackModal(false); }}
+                      onDrop={(e) => handleCardModalDrop(e, 'back')}
+                      onPaste={(e) => handleCardModalPaste(e, 'back')}
+                      placeholder="Back answer/definition... (or drop image here for Back)"
+                      style={{
+                        border: isDraggingOverBackModal ? "2px dashed var(--accent-color)" : undefined,
+                        backgroundColor: isDraggingOverBackModal ? "rgba(99, 102, 241, 0.08)" : undefined,
+                      }}
                     />
+                    {cardBackImageUrl && (
+                      <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
+                        <img src={cardBackImageUrl} alt="Back WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                        <span style={{ flex: 1, fontSize: "0.76rem", fontWeight: 600, color: "var(--accent-color)" }}>📷 Back Image Attached</span>
+                        <button type="button" className="notion-btn secondary" style={{ padding: "2px 6px", fontSize: "0.7rem", color: "#e11d48" }} onClick={() => setCardBackImageUrl(null)}>Remove</button>
+                      </div>
+                    )}
                   </div>
+
                   <div className="notion-input-group">
                     <label>Tags (Comma separated)</label>
                     <input 

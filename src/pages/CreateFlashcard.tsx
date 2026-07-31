@@ -9,9 +9,11 @@ import {
   scanImageForFlashcards,
   scanPdfTextForFlashcards,
   smartScanPdfForFlashcards,
+  extractDiagramWithAI,
   GeneratedFlashcard,
   PdfGeneratedFlashcard,
 } from "../services/llm";
+import { convertToWebP } from "../utils/image";
 
 import {
   extractStructuredTextFromPDF,
@@ -22,7 +24,7 @@ import {
 } from "../services/pdf";
 
 import { 
-  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap
+  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap, Image as ImageIcon, Loader2
 } from "lucide-react";
 
 import EmojiPicker from "../components/EmojiPicker";
@@ -57,6 +59,7 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
   const [activeTab, setActiveTab] = useState<'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf'>('manual');
 
+
   const [loading, setLoading] = useState(false);
 
   const [status, setStatus] = useState<StatusState | null>(null);
@@ -77,17 +80,17 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
 
 
-  // Manual Mode Form
-
   const [manualFront, setManualFront] = useState("");
-
   const [manualBack, setManualBack] = useState("");
-
   const [manualTags, setManualTags] = useState("");
-
-
-
-  // AI Text input
+  const [frontImageUrl, setFrontImageUrl] = useState<string | null>(null);
+  const [backImageUrl, setBackImageUrl] = useState<string | null>(null);
+  const [diagramQuery, setDiagramQuery] = useState("");
+  const [extractingDiagram, setExtractingDiagram] = useState(false);
+  const [isDraggingOverFront, setIsDraggingOverFront] = useState(false);
+  const [isDraggingOverBack, setIsDraggingOverBack] = useState(false);
+  const [showAiDiagramPrompt, setShowAiDiagramPrompt] = useState(false);
+  const [targetAiSide, setTargetAiSide] = useState<'front' | 'back'>('back');
 
   const [aiText, setAiText] = useState("");
 
@@ -137,6 +140,11 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
   const [newDeckIcon, setNewDeckIcon] = useState("🎴");
 
+
+
+
+
+
   const [newDeckDesc, setNewDeckDesc] = useState("");
 
   const [newDeckFolderId, setNewDeckFolderId] = useState("");
@@ -151,42 +159,23 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
   }, []);
 
-
-
   const loadData = async () => {
-
     try {
-
       const d = await getDecks();
-
       setDecks(d);
-
       if (d.length > 0) {
-
         setSelectedDeckId(d[0].id);
-
       }
-
       const f = await getFolders();
-
       setFolders(f);
-
       if (f.length > 0) {
-
         setNewDeckFolderId(f[0].id);
-
       } else {
-
         setNewDeckFolderId("none");
-
       }
-
     } catch (e) {
-
       console.error(e);
-
     }
-
   };
 
 
@@ -202,95 +191,122 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
     try {
 
       const folderIdVal = newDeckFolderId === "none" || !newDeckFolderId ? null : newDeckFolderId;
-
       const created = await createDeck(newDeckName, folderIdVal, newDeckIcon, newDeckDesc);
-
-      
-
-      // Reload decks
-
       const d = await getDecks();
-
       setDecks(d);
-
-      
-
-      // Select the newly created deck
-
       setSelectedDeckId(created.id);
-
-      
-
-      // Close modal
-
       setShowNewDeckModal(false);
-
-      
-
-      // Refresh sidebar so it updates immediately
-
       if (onSidebarRefresh) {
-
         onSidebarRefresh();
-
       }
-
     } catch (err) {
-
       console.error(err);
-
       showStatus("Failed to create deck: " + (err instanceof Error ? err.message : String(err)), "error");
-
     }
-
   };
 
+  const handleExtractDiagram = async (side: 'front' | 'back' = targetAiSide) => {
+    if (!diagramQuery.trim()) {
+      showStatus("Please type what diagram you want extracted (e.g., Krebs Cycle, Heart Anatomy).", "warning");
+      return;
+    }
+    try {
+      setExtractingDiagram(true);
+      showStatus("AI is generating/extracting diagram into WebP image...", "info");
+      const webpUrl = await extractDiagramWithAI(diagramQuery, `${manualFront}\n${manualBack}`);
+      if (side === 'front') {
+        setFrontImageUrl(webpUrl);
+      } else {
+        setBackImageUrl(webpUrl);
+      }
+      showStatus(`Diagram attached to ${side.toUpperCase()} as WebP image!`, "success", 3000);
+    } catch (err: any) {
+      console.error(err);
+      showStatus(err.message || "Failed to extract diagram.", "error");
+    } finally {
+      setExtractingDiagram(false);
+    }
+  };
 
+  const processImageFile = async (file: File, side: 'front' | 'back') => {
+    try {
+      setLoading(true);
+      showStatus(`Converting image to WebP format for ${side.toUpperCase()}...`, "info");
+      const webpUrl = await convertToWebP(file);
+      if (side === 'front') {
+        setFrontImageUrl(webpUrl);
+        showStatus("Image attached to FRONT face (WebP format)!", "success", 3000);
+      } else {
+        setBackImageUrl(webpUrl);
+        showStatus("Image attached to BACK face (WebP format)!", "success", 3000);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showStatus("Failed to process image into WebP format.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDropSide = async (e: React.DragEvent, side: 'front' | 'back') => {
+    e.preventDefault();
+    if (side === 'front') setIsDraggingOverFront(false);
+    else setIsDraggingOverBack(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find((f) => f.type.startsWith("image/"));
+    if (imageFile) {
+      await processImageFile(imageFile, side);
+    } else {
+      showStatus("Please drop an image file (PNG, JPG, WebP).", "warning", 3000);
+    }
+  };
+
+  const handlePasteSide = async (e: React.ClipboardEvent, side: 'front' | 'back') => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        e.preventDefault();
+        await processImageFile(file, side);
+      }
+    }
+  };
 
   // MANUAL CREATION SUBMIT
-
   const handleManualSubmit = async (e: React.FormEvent) => {
-
     e.preventDefault();
-
-    if (!manualFront.trim() || !manualBack.trim()) return;
+    if (!manualFront.trim() && !frontImageUrl) {
+      showStatus("Please provide text or an image for the Front side.", "warning");
+      return;
+    }
+    if (!manualBack.trim() && !backImageUrl) {
+      showStatus("Please provide text or an image for the Back side.", "warning");
+      return;
+    }
 
     if (!selectedDeckId) {
-
       showStatus("Please create a deck first before adding flashcards.", "warning");
-
       return;
-
     }
-
-
 
     try {
-
       setLoading(true);
-
-      await createFlashcard(selectedDeckId, manualFront, manualBack, manualTags);
-
+      await createFlashcard(selectedDeckId, manualFront || "(Image)", manualBack || "(Image)", manualTags, null, frontImageUrl, backImageUrl);
       setManualFront("");
-
       setManualBack("");
-
       setManualTags("");
-
+      setFrontImageUrl(null);
+      setBackImageUrl(null);
+      setDiagramQuery("");
       showStatus("Flashcard created successfully!", "success", 3000);
-
     } catch (e) {
-
       console.error(e);
-
       showStatus("Failed to save flashcard to database.", "error");
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
 
@@ -1070,6 +1086,10 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
 
 
 
+
+
+
+
       {/* Tab Panels */}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -1079,134 +1099,178 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
         {/* MANUAL TAB */}
 
         {activeTab === 'manual' && (
-
           <form onSubmit={handleManualSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-
-            <div className="notion-input-group">
-
-              <label>Front (Term / Question)</label>
-
-              <textarea 
-
-                className="notion-input" 
-
-                rows={3} 
-
-                value={manualFront}
-
-                onChange={(e) => setManualFront(e.target.value)}
-
-                placeholder="Write the question or concept name..."
-
-                required
-
-              />
-
-            </div>
-
             
+            {/* Action Bar Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem", color: "var(--text-secondary)", flexWrap: "wrap", gap: "8px" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <ImageIcon size={14} color="var(--accent-color)" /> Drag & drop or paste an image onto either text box to attach it (saved as WebP)
+              </span>
+              <button
+                type="button"
+                className="notion-btn secondary"
+                style={{ padding: "4px 10px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "4px" }}
+                onClick={() => setShowAiDiagramPrompt(!showAiDiagramPrompt)}
+              >
+                <Sparkles size={13} color="var(--accent-color)" /> AI Diagram Extractor
+              </button>
+            </div>
 
+            {/* Inline AI Diagram Generator */}
+            {showAiDiagramPrompt && (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "10px 12px", border: "1px solid var(--border-color)", borderRadius: "8px", backgroundColor: "var(--bg-secondary)" }}>
+                <Sparkles size={16} color="var(--accent-color)" />
+                <input
+                  type="text"
+                  className="notion-input"
+                  style={{ fontSize: "0.82rem", flex: 1 }}
+                  value={diagramQuery}
+                  onChange={(e) => setDiagramQuery(e.target.value)}
+                  placeholder="Type diagram topic (e.g. Krebs Cycle, Heart Anatomy, Refraction)..."
+                  autoFocus
+                />
+                <select
+                  className="notion-input"
+                  style={{ width: "90px", fontSize: "0.78rem" }}
+                  value={targetAiSide}
+                  onChange={(e) => setTargetAiSide(e.target.value as 'front' | 'back')}
+                >
+                  <option value="back">Back</option>
+                  <option value="front">Front</option>
+                </select>
+                <button
+                  type="button"
+                  className="notion-btn primary"
+                  style={{ padding: "6px 12px", fontSize: "0.78rem" }}
+                  onClick={async () => {
+                    await handleExtractDiagram(targetAiSide);
+                    setShowAiDiagramPrompt(false);
+                  }}
+                  disabled={extractingDiagram}
+                >
+                  {extractingDiagram ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : "Generate"}
+                </button>
+                <button type="button" className="theme-toggle-btn" onClick={() => setShowAiDiagramPrompt(false)}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Front Text Area with Drag & Drop */}
             <div className="notion-input-group">
-
-              <label>Back (Definition / Answer)</label>
-
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Front (Term / Question)</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image here for Front</span>
+              </label>
               <textarea 
-
                 className="notion-input" 
-
-                rows={4} 
-
-                value={manualBack}
-
-                onChange={(e) => setManualBack(e.target.value)}
-
-                placeholder="Write the reference answer or definition..."
-
-                required
-
+                rows={3} 
+                value={manualFront}
+                onChange={(e) => setManualFront(e.target.value)}
+                onDragOver={(e) => { e.preventDefault(); setIsDraggingOverFront(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDraggingOverFront(false); }}
+                onDrop={(e) => handleDropSide(e, 'front')}
+                onPaste={(e) => handlePasteSide(e, 'front')}
+                placeholder="Write front question/term... (or drop image here to set Front image)"
+                style={{
+                  border: isDraggingOverFront ? "2px dashed var(--accent-color)" : undefined,
+                  backgroundColor: isDraggingOverFront ? "rgba(99, 102, 241, 0.08)" : undefined,
+                  transition: "all 0.15s ease",
+                }}
               />
-
+              {/* Front Image Attached Preview */}
+              {frontImageUrl && (
+                <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
+                  <img src={frontImageUrl} alt="Front WebP" style={{ maxWidth: "80px", maxHeight: "60px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-color)" }}>📷 Front Image Attached (Replaces Front Face)</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Renders prominently on Front side of card</span>
+                  </div>
+                  <button type="button" className="notion-btn secondary" style={{ padding: "3px 8px", fontSize: "0.72rem", color: "#e11d48" }} onClick={() => setFrontImageUrl(null)}>
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
 
-
+            {/* Back Text Area with Drag & Drop */}
+            <div className="notion-input-group">
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Back (Definition / Answer)</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image here for Back</span>
+              </label>
+              <textarea 
+                className="notion-input" 
+                rows={4} 
+                value={manualBack}
+                onChange={(e) => setManualBack(e.target.value)}
+                onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBack(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDraggingOverBack(false); }}
+                onDrop={(e) => handleDropSide(e, 'back')}
+                onPaste={(e) => handlePasteSide(e, 'back')}
+                placeholder="Write back answer/definition... (or drop image here to set Back image)"
+                style={{
+                  border: isDraggingOverBack ? "2px dashed var(--accent-color)" : undefined,
+                  backgroundColor: isDraggingOverBack ? "rgba(99, 102, 241, 0.08)" : undefined,
+                  transition: "all 0.15s ease",
+                }}
+              />
+              {/* Back Image Attached Preview */}
+              {backImageUrl && (
+                <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
+                  <img src={backImageUrl} alt="Back WebP" style={{ maxWidth: "80px", maxHeight: "60px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-color)" }}>📷 Back Image Attached (Replaces Back Face)</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Renders prominently on Back side of card</span>
+                  </div>
+                  <button type="button" className="notion-btn secondary" style={{ padding: "3px 8px", fontSize: "0.72rem", color: "#e11d48" }} onClick={() => setBackImageUrl(null)}>
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="notion-input-group">
-
               <label>Tags (Optional, comma separated)</label>
-
               <input 
-
                 className="notion-input" 
-
                 type="text" 
-
                 value={manualTags}
-
                 onChange={(e) => setManualTags(e.target.value)}
-
                 placeholder="biology, glossary, chapter1"
-
               />
-
             </div>
-
-
 
             <button type="submit" className="notion-btn" disabled={loading} style={{ alignSelf: "flex-start" }}>
-
               <Plus size={16} /> Save Flashcard
-
             </button>
-
           </form>
-
         )}
 
-
-
         {/* AI TEXT TAB */}
-
         {activeTab === 'ai-text' && (
-
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-
             <div className="notion-input-group">
               <label>Paste Chapter Notes, Articles, or Raw Text</label>
-
               <textarea 
-
                 className="notion-input" 
-
                 rows={10} 
-
                 value={aiText}
-
                 onChange={(e) => setAiText(e.target.value)}
-
                 placeholder="Paste the educational content here. The AI will scan this content, identify core terms, definitions, and categories..."
-
               />
-
             </div>
 
             <button 
-
+              type="button"
               className="notion-btn" 
-
               onClick={handleScanText}
-
               disabled={loading || !aiText.trim()}
-
               style={{ alignSelf: "flex-start" }}
-
             >
-
               <Sparkles size={16} /> Extract definitions using AI
-
             </button>
-
           </div>
-
         )}
 
 

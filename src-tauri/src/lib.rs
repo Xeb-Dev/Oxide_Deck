@@ -258,6 +258,23 @@ pub fn run() {
                 ALTER TABLE tests ADD COLUMN time_limit_minutes INTEGER;
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "add_image_url_to_flashcards",
+            sql: "
+                ALTER TABLE flashcards ADD COLUMN image_url TEXT;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "add_front_and_back_image_url_to_flashcards",
+            sql: "
+                ALTER TABLE flashcards ADD COLUMN front_image_url TEXT;
+                ALTER TABLE flashcards ADD COLUMN back_image_url TEXT;
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 

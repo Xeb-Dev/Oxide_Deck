@@ -523,7 +523,22 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
               {currentCard.tags && (
                 <span className="flashcard-tags-badge">{currentCard.tags.split(',')[0]}</span>
               )}
-              <MathText className="flashcard-text">{currentCard.front}</MathText>
+              
+              {/* Front Image rendering */}
+              {(currentCard.front_image_url || currentCard.image_url) && (
+                <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
+                  <img
+                    src={currentCard.front_image_url || currentCard.image_url!}
+                    alt="Front Card Image"
+                    style={{ maxWidth: "100%", maxHeight: "240px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
+                  />
+                </div>
+              )}
+
+              {currentCard.front && currentCard.front !== "(Image)" && (
+                <MathText className="flashcard-text">{currentCard.front}</MathText>
+              )}
+
               <div style={{ position: "absolute", bottom: "16px", fontSize: "0.78rem", color: "var(--text-muted)" }}>
                 Click card to flip manually
               </div>
@@ -532,7 +547,21 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             {/* Back card face */}
             <div className="flashcard-face back">
               <span className="flashcard-side-label">Back (Reference Answer)</span>
-              <MathText className="flashcard-text">{currentCard.back}</MathText>
+              
+              {/* Back Image rendering */}
+              {currentCard.back_image_url && (
+                <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
+                  <img
+                    src={currentCard.back_image_url}
+                    alt="Back Card Image"
+                    style={{ maxWidth: "100%", maxHeight: "240px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
+                  />
+                </div>
+              )}
+
+              {currentCard.back && currentCard.back !== "(Image)" && (
+                <MathText className="flashcard-text">{currentCard.back}</MathText>
+              )}
             </div>
 
           </div>

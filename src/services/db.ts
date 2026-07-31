@@ -54,6 +54,9 @@ export interface Flashcard {
   elapsed_days: number;
   scheduled_days: number;
   last_review: string | null;
+  image_url?: string | null;
+  front_image_url?: string | null;
+  back_image_url?: string | null;
 }
 
 export interface RevisionHistory {
@@ -203,13 +206,25 @@ export async function getAllFlashcards(): Promise<Flashcard[]> {
   return db.select<Flashcard[]>("SELECT * FROM flashcards ORDER BY created_at DESC");
 }
 
-export async function createFlashcard(deckId: string, front: string, back: string, tags: string | null = ""): Promise<Flashcard> {
+export async function createFlashcard(
+  deckId: string, 
+  front: string, 
+  back: string, 
+  tags: string | null = "", 
+  imageUrl: string | null = null,
+  frontImageUrl: string | null = null,
+  backImageUrl: string | null = null
+): Promise<Flashcard> {
   const db = await getDB();
   const id = generateUUID();
   const now = new Date().toISOString();
+
+  const fImg = frontImageUrl || imageUrl || null;
+  const bImg = backImageUrl || null;
+
   await db.execute(
-    "INSERT INTO flashcards (id, deck_id, front, back, tags, ease, interval_days, repetitions, next_review, created_at, stability, difficulty, state, reps, lapses, elapsed_days, scheduled_days, last_review) VALUES ($1, $2, $3, $4, $5, 2.5, 0, 0, $6, $7, 0, 0, 0, 0, 0, 0, 0, NULL)",
-    [id, deckId, front, back, tags, now, now]
+    "INSERT INTO flashcards (id, deck_id, front, back, tags, ease, interval_days, repetitions, next_review, created_at, stability, difficulty, state, reps, lapses, elapsed_days, scheduled_days, last_review, image_url, front_image_url, back_image_url) VALUES ($1, $2, $3, $4, $5, 2.5, 0, 0, $6, $7, 0, 0, 0, 0, 0, 0, 0, NULL, $8, $9, $10)",
+    [id, deckId, front, back, tags, now, now, fImg, fImg, bImg]
   );
   return {
     id,
@@ -230,14 +245,28 @@ export async function createFlashcard(deckId: string, front: string, back: strin
     elapsed_days: 0,
     scheduled_days: 0,
     last_review: null,
+    image_url: fImg,
+    front_image_url: fImg,
+    back_image_url: bImg
   };
 }
 
-export async function updateFlashcard(id: string, front: string, back: string, tags: string | null): Promise<void> {
+export async function updateFlashcard(
+  id: string, 
+  front: string, 
+  back: string, 
+  tags: string | null, 
+  imageUrl: string | null = null,
+  frontImageUrl: string | null = null,
+  backImageUrl: string | null = null
+): Promise<void> {
   const db = await getDB();
+  const fImg = frontImageUrl || imageUrl || null;
+  const bImg = backImageUrl || null;
+
   await db.execute(
-    "UPDATE flashcards SET front = $1, back = $2, tags = $3 WHERE id = $4",
-    [front, back, tags, id]
+    "UPDATE flashcards SET front = $1, back = $2, tags = $3, image_url = $4, front_image_url = $5, back_image_url = $6 WHERE id = $7",
+    [front, back, tags, fImg, fImg, bImg, id]
   );
 }
 

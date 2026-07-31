@@ -1,4 +1,5 @@
 import type { TestQuestionType } from './db';
+import { convertToWebP } from '../utils/image';
 
 export interface AIConfig {
   provider: 'gemini' | 'groq' | 'local';
@@ -1208,5 +1209,53 @@ Output ONLY a JSON object:
   } catch (e) {
     console.error("Failed generateFlashcardMimicMock:", responseText, e);
     throw new Error("AI failed to generate mock exam from flashcards. Please try again.");
+  }
+}
+
+/**
+ * Extract or generate a diagram image for a flashcard based on user prompt and optional notes context.
+ * Returns a compressed WebP Data URL.
+ */
+export async function extractDiagramWithAI(
+  diagramName: string,
+  notesText?: string
+): Promise<string> {
+  const systemPrompt = `You are an expert technical illustrator and diagram designer.
+Given a requested diagram concept "${diagramName}" and optional study notes, generate a clean, clear, visually beautiful SVG diagram.
+
+Rules:
+- Output ONLY valid raw SVG XML code starting with <svg> and ending with </svg>.
+- Do not wrap in markdown codeblocks (no \`\`\`xml or \`\`\`svg).
+- Use clear labels, vibrant harmonious colors suitable for modern study cards (dark/light theme friendly, e.g., #3b82f6, #10b981, #f59e0b, #ef4444, #8b5cf6).
+- Include crisp text labels using standard sans-serif font (Arial, system-ui).
+- Set width="800" height="500" viewBox="0 0 800 500" with a clean background rect (#1e293b or #ffffff).`;
+
+  const prompt = `Diagram Request: ${diagramName}\nStudy Notes Context: ${notesText || "None provided"}`;
+  const responseText = await callLLM('scan', prompt, systemPrompt);
+
+  // Extract raw SVG string
+  let svgMatch = responseText.match(/<svg[\s\S]*?<\/svg>/i);
+  let svgString = svgMatch ? svgMatch[0] : "";
+
+  if (!svgString) {
+    // Fallback: wrap raw response if it missed svg tag
+    svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+      <rect width="800" height="500" fill="#1e293b"/>
+      <text x="400" y="250" fill="#f8fafc" font-size="24" text-anchor="middle" font-family="sans-serif">${diagramName}</text>
+    </svg>`;
+  }
+
+  // Convert SVG string to a WebP Data URL
+  const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const objectUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    const webpDataUrl = await convertToWebP(objectUrl, 0.9, 1000);
+    URL.revokeObjectURL(objectUrl);
+    return webpDataUrl;
+  } catch (err) {
+    URL.revokeObjectURL(objectUrl);
+    console.error("Failed svgToWebP conversion:", err);
+    throw new Error("Failed to process diagram image into WebP format.");
   }
 }
