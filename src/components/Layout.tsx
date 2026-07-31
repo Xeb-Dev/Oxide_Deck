@@ -15,7 +15,7 @@ import {
   Target
 } from "lucide-react";
 import { getFolders, getDecks, getSubjects, Folder, Deck, Subject, updateFolderSubject, updateDeckFolder, moveFlashcardToDeck } from "../services/db";
-import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
+import { acceptDrop, allowDrop, setDragData, handleDragAutoScroll, stopDragAutoScroll, handleDragWheel } from "../utils/dnd";
 import { getRootFolders } from "../utils/folderTree";
 import SidebarFolderItem from "./SidebarFolderItem";
 
@@ -80,6 +80,42 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
     };
     window.addEventListener("oxide-deck-db-refresh", handleRefresh);
     return () => window.removeEventListener("oxide-deck-db-refresh", handleRefresh);
+  }, []);
+
+  useEffect(() => {
+    let isDragging = false;
+
+    const onWindowDragStart = () => {
+      isDragging = true;
+    };
+    const onWindowDragOver = (e: DragEvent) => {
+      isDragging = true;
+      handleDragAutoScroll(e);
+    };
+    const onWindowDragEnd = () => {
+      isDragging = false;
+      stopDragAutoScroll();
+    };
+    const onWindowWheel = (e: WheelEvent) => {
+      if (isDragging) {
+        handleDragWheel(e);
+      }
+    };
+
+    window.addEventListener("dragstart", onWindowDragStart, true);
+    window.addEventListener("dragover", onWindowDragOver, true);
+    window.addEventListener("dragend", onWindowDragEnd, true);
+    window.addEventListener("drop", onWindowDragEnd, true);
+    window.addEventListener("wheel", onWindowWheel, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener("dragstart", onWindowDragStart, true);
+      window.removeEventListener("dragover", onWindowDragOver, true);
+      window.removeEventListener("dragend", onWindowDragEnd, true);
+      window.removeEventListener("drop", onWindowDragEnd, true);
+      window.removeEventListener("wheel", onWindowWheel, { capture: true });
+      stopDragAutoScroll();
+    };
   }, []);
 
   useEffect(() => {
