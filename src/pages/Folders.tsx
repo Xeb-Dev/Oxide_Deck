@@ -8,7 +8,7 @@ import {
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
 import { 
-  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X
+  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload
 } from "lucide-react";
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
@@ -17,6 +17,7 @@ import FolderNode from "../components/FolderNode";
 import { acceptDrop, allowDrop, setDragData } from "../utils/dnd";
 import { getFolderPathLabel, getRootFolders, getValidParentFolders } from "../utils/folderTree";
 import { convertToWebP } from "../utils/image";
+import { exportDeck, exportFolder, exportSubject, importOxidePackage } from "../services/exportImport";
 
 interface FoldersProps {
   currentNav: {
@@ -403,6 +404,60 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setShowDeckModal(true);
   };
 
+  const handleExportDeck = async (deckId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setBanner({ message: "Exporting deck archive (.oxdeck)...", variant: "info" });
+      const filename = await exportDeck(deckId);
+      setBanner({ message: `Exported deck successfully as "${filename}"!`, variant: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showError("Failed to export deck: " + (err.message || String(err)));
+    }
+  };
+
+  const handleExportFolder = async (folderId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setBanner({ message: "Exporting folder archive (.oxfolder)...", variant: "info" });
+      const filename = await exportFolder(folderId);
+      setBanner({ message: `Exported folder successfully as "${filename}"!`, variant: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showError("Failed to export folder: " + (err.message || String(err)));
+    }
+  };
+
+  const handleExportSubject = async (subjectId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setBanner({ message: "Exporting subject archive (.oxsubject)...", variant: "info" });
+      const filename = await exportSubject(subjectId);
+      setBanner({ message: `Exported subject successfully as "${filename}"!`, variant: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showError("Failed to export subject: " + (err.message || String(err)));
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setBanner({ message: `Importing package "${file.name}"...`, variant: "info" });
+      const msg = await importOxidePackage(file);
+      setBanner({ message: msg, variant: "success" });
+      await loadData();
+      window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+      if (onSidebarRefresh) onSidebarRefresh();
+    } catch (err: any) {
+      console.error(err);
+      showError("Import failed: " + (err.message || String(err)));
+    } finally {
+      e.target.value = "";
+    }
+  };
+
   const openEditCard = (card: Flashcard) => {
     setEditingCard(card);
     setCardFront(card.front);
@@ -469,6 +524,14 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             >
               <Sparkles size={16} />
               Teach AI
+            </button>
+            <button 
+              className="notion-btn secondary"
+              title="Export Deck (.oxdeck)"
+              onClick={(e) => handleExportDeck(selectedDeck.id, e)}
+            >
+              <Download size={16} />
+              Export (.oxdeck)
             </button>
           </div>
         </div>
@@ -690,6 +753,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           onDismiss={() => setBanner(null)}
         />
       )}
+      <input 
+        type="file" 
+        id="oxide-package-import-input" 
+        accept=".oxdeck,.oxfolder,.oxsubject,.json" 
+        style={{ display: "none" }} 
+        onChange={handleImportFile} 
+      />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div className="page-emoji">📁</div>
@@ -700,6 +770,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
         </div>
 
         <div style={{ display: "flex", gap: "8px" }}>
+          <button 
+            className="notion-btn secondary" 
+            title="Import .oxdeck, .oxfolder, or .oxsubject package"
+            onClick={() => document.getElementById('oxide-package-import-input')?.click()}
+          >
+            <Upload size={16} /> Import Package
+          </button>
           <button className="notion-btn secondary" onClick={() => {
             setEditingSubject(null);
             setSubjectName("");
@@ -781,6 +858,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 </div>
 
                 <div style={{ display: "flex", gap: "6px" }}>
+                  <button 
+                    className="theme-toggle-btn" 
+                    title="Export Subject (.oxsubject)"
+                    onClick={(e) => handleExportSubject(subject.id, e)}
+                  >
+                    <Download size={14} />
+                  </button>
                   <button className="theme-toggle-btn" onClick={(e) => openEditSubject(subject, e)}>
                     <Edit3 size={14} />
                   </button>
@@ -808,6 +892,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     onEditDeck={openEditDeck}
                     onDeleteDeck={handleDeleteDeckClick}
                     onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
+                    onExportFolder={handleExportFolder}
+                    onExportDeck={handleExportDeck}
                   />
                 ))}
 
@@ -875,6 +961,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 onEditDeck={openEditDeck}
                 onDeleteDeck={handleDeleteDeckClick}
                 onOpenDeck={(deckId) => setCurrentNav({ page: 'folders', deckId })}
+                onExportFolder={handleExportFolder}
+                onExportDeck={handleExportDeck}
               />
             ))}
           </div>

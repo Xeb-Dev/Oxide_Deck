@@ -1,5 +1,5 @@
 import React from "react";
-import { Edit3, Plus, Trash2 } from "lucide-react";
+import { Edit3, Plus, Trash2, Download } from "lucide-react";
 import {
   Deck,
   Folder,
@@ -25,6 +25,8 @@ interface FolderNodeProps {
   onEditDeck: (deck: Deck, e: React.MouseEvent) => void;
   onDeleteDeck: (deckId: string, e: React.MouseEvent) => void;
   onOpenDeck: (deckId: string) => void;
+  onExportFolder?: (folderId: string, e: React.MouseEvent) => void;
+  onExportDeck?: (deckId: string, e: React.MouseEvent) => void;
 }
 
 export default function FolderNode({
@@ -42,6 +44,8 @@ export default function FolderNode({
   onEditDeck,
   onDeleteDeck,
   onOpenDeck,
+  onExportFolder,
+  onExportDeck,
 }: FolderNodeProps) {
   const folderDecks = decks.filter((d) => d.folder_id === folder.id);
   const childFolders = getChildFolders(folders, folder.id);
@@ -122,6 +126,15 @@ export default function FolderNode({
           >
             <Plus size={14} />
           </button>
+          {onExportFolder && (
+            <button
+              className="theme-toggle-btn"
+              title="Export Folder (.oxfolder)"
+              onClick={(e) => onExportFolder(folder.id, e)}
+            >
+              <Download size={14} />
+            </button>
+          )}
           <button className="theme-toggle-btn" onClick={(e) => onEditFolder(folder, e)}>
             <Edit3 size={14} />
           </button>
@@ -138,10 +151,10 @@ export default function FolderNode({
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: "16px" }}>
         {childFolders.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", paddingLeft: "12px", borderLeft: "2px solid var(--border-color)" }}>
-            {childFolders.map((child) => (
+            {childFolders.map((subfolder) => (
               <FolderNode
-                key={child.id}
-                folder={child}
+                key={subfolder.id}
+                folder={subfolder}
                 folders={folders}
                 decks={decks}
                 dragOverId={dragOverId}
@@ -155,6 +168,8 @@ export default function FolderNode({
                 onEditDeck={onEditDeck}
                 onDeleteDeck={onDeleteDeck}
                 onOpenDeck={onOpenDeck}
+                onExportFolder={onExportFolder}
+                onExportDeck={onExportDeck}
               />
             ))}
           </div>
@@ -195,6 +210,16 @@ export default function FolderNode({
                 <div className="deck-card-meta">
                   <span>Click to open</span>
                   <div style={{ display: "flex", gap: "4px" }}>
+                    {onExportDeck && (
+                      <button
+                        className="theme-toggle-btn"
+                        style={{ padding: "2px" }}
+                        title="Export Deck (.oxdeck)"
+                        onClick={(e) => onExportDeck(deck.id, e)}
+                      >
+                        <Download size={12} />
+                      </button>
+                    )}
                     <button
                       className="theme-toggle-btn"
                       style={{ padding: "2px" }}
