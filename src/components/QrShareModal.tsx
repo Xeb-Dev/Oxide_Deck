@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { ShieldCheck, Copy, Check, Clock, Download, X } from "lucide-react";
+import { ShieldCheck, Clock, X } from "lucide-react";
 import { encryptPackagePayload } from "../services/p2pCrypto";
 import { getDeckPackagePayload, getFolderPackagePayload, getSubjectPackagePayload } from "../services/exportImport";
 
@@ -16,9 +16,8 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
-  const [qrString, setQrString] = useState("");
+  const [isP2p, setIsP2p] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -37,7 +36,7 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
           payloadData = await getSubjectPackagePayload(itemId);
         }
 
-        const { qrString: generatedQr } = await encryptPackagePayload(
+        const { qrString: generatedQr, isP2pStream } = await encryptPackagePayload(
           payloadData,
           itemType,
           itemName,
@@ -46,7 +45,7 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
 
         if (!mounted) return;
 
-        setQrString(generatedQr);
+        setIsP2p(isP2pStream);
 
         // Render to canvas
         if (canvasRef.current) {
@@ -85,22 +84,6 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  const handleCopyToken = () => {
-    if (!qrString) return;
-    navigator.clipboard.writeText(qrString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownloadQr = () => {
-    if (!canvasRef.current) return;
-    const url = canvasRef.current.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `oxide-share-${itemName.replace(/[^a-z0-9]/gi, "_")}.png`;
-    a.click();
-  };
-
   return (
     <div
       style={{
@@ -130,7 +113,7 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
           boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
           display: "flex",
           flexDirection: "column",
-          gap: "20px",
+          gap: "18px",
           position: "relative",
           animation: "fadeIn 0.2s ease-out",
         }}
@@ -155,22 +138,39 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
         </div>
 
         {/* Security Badge */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            backgroundColor: "var(--success-light)",
-            color: "var(--success-color)",
-            padding: "8px 14px",
-            borderRadius: "8px",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            border: "1px solid rgba(59, 156, 102, 0.2)",
-          }}
-        >
-          <ShieldCheck size={16} />
-          <span>AES-256-GCM End-to-End Encrypted</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "var(--success-light)",
+              color: "var(--success-color)",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              border: "1px solid rgba(59, 156, 102, 0.2)",
+            }}
+          >
+            <ShieldCheck size={16} />
+            <span>AES-256-GCM End-to-End Encrypted</span>
+          </div>
+
+          {isP2p && (
+            <div
+              style={{
+                fontSize: "0.78rem",
+                color: "var(--accent-color)",
+                backgroundColor: "var(--accent-light)",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontWeight: 600,
+              }}
+            >
+              ⚡ High-Capacity P2P Handshake QR Code Ready
+            </div>
+          )}
         </div>
 
         {/* QR Code Display Canvas */}
@@ -190,7 +190,7 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
         >
           {loading && (
             <div style={{ fontStyle: "italic", color: "#64748b", fontSize: "0.9rem" }}>
-              Encrypting package payload...
+              Generating P2P encrypted QR code...
             </div>
           )}
 
@@ -238,7 +238,7 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
         {/* Session Expiration Bar */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-            <span>One-Time Session Timer</span>
+            <span>One-Time P2P Session</span>
             <span style={{ fontWeight: 600, color: timeLeft < 10 ? "var(--danger-color)" : "inherit" }}>
               {timeLeft}s remaining
             </span>
@@ -263,27 +263,14 @@ export default function QrShareModal({ itemType, itemId, itemName, itemIcon, onC
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            className="notion-btn"
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-            onClick={handleCopyToken}
-            disabled={loading || !!error || timeLeft === 0}
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-            <span>{copied ? "Copied Code" : "Copy Token"}</span>
-          </button>
-          <button
-            className="notion-btn"
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-            onClick={handleDownloadQr}
-            disabled={loading || !!error}
-          >
-            <Download size={14} />
-            <span>Save Image</span>
-          </button>
-        </div>
+        {/* Close Button */}
+        <button
+          className="notion-btn"
+          style={{ width: "100%", padding: "10px", fontWeight: 600 }}
+          onClick={onClose}
+        >
+          Done
+        </button>
       </div>
     </div>
   );
