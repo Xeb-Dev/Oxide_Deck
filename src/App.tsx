@@ -19,6 +19,8 @@ interface NavigationState {
   openModal?: 'subject' | 'folder' | 'deck';
 }
 
+import ToastBanner from "./components/ToastBanner";
+
 function App() {
   const [currentNav, setCurrentNav] = useState<NavigationState>({
     page: 'dashboard'
@@ -65,13 +67,16 @@ function App() {
   };
 
   return (
-    <Layout 
-      currentNav={currentNav} 
-      setCurrentNav={handleNavChange} 
-      refreshTrigger={sidebarRefreshTrigger}
-    >
-      {renderContent()}
-    </Layout>
+    <>
+      <ToastBanner />
+      <Layout 
+        currentNav={currentNav} 
+        setCurrentNav={handleNavChange} 
+        refreshTrigger={sidebarRefreshTrigger}
+      >
+        {renderContent()}
+      </Layout>
+    </>
   );
 }
 

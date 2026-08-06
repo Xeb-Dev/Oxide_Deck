@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getStats, getDueFlashcards, Stats } from "../services/db";
+import { checkAndTriggerStudyReminders } from "../services/notificationService";
 import { Sparkles, Calendar, BookOpen, Flame, Award } from "lucide-react";
 
 interface DashboardProps {
@@ -45,6 +46,9 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
       }));
 
       setDueDecks(aggregatedDecks);
+
+      // Trigger 1A Spaced Repetition / Study Notifications check
+      checkAndTriggerStudyReminders(dueCards.length, s.cardsReviewedToday || 0).catch(console.error);
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
     } finally {

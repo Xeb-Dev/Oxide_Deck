@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { resetDatabase, getFSRSParameters, optimizeFSRSParameters, resetFSRSParameters, FsrsParametersInfo } from "../services/db";
 import { getAIConfig, getLearningPersonalities, LearningPersonality, saveLearningPersonalities, LLMTask, TaskAIConfig, getTaskAIConfig, saveTaskAIConfig } from "../services/llm";
-import { Eye, EyeOff, Trash2, ShieldAlert, Plus, Sparkles, RotateCcw, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Trash2, ShieldAlert, Plus, Sparkles, RotateCcw, Loader2, Bell, Clock, Volume2, Moon, Send, Flame } from "lucide-react";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
+import { getNotificationSettings, saveNotificationSettings, requestNotificationPermission, triggerNotification, NotificationSettings, DAY_KEYS, DAY_LABELS } from "../services/notificationService";
 
 export default function SettingsPage() {
   const [provider, setProvider] = useState<'gemini' | 'groq' | 'local'>('gemini');
@@ -43,6 +44,41 @@ export default function SettingsPage() {
     }));
   };
 
+  // Notification Settings State
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings>(getNotificationSettings());
+
+  const handleNotifChange = <K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) => {
+    setNotifSettings(prev => {
+      const updated = { ...prev, [key]: value };
+      saveNotificationSettings(updated);
+      return updated;
+    });
+
+    if (key === "masterEnabled" && value === true) {
+      requestNotificationPermission().catch(console.error);
+    }
+  };
+
+  const handleTestNotif = async () => {
+    const granted = await requestNotificationPermission();
+    if (!granted) {
+      setSaveStatus({ message: "Notification permission was not granted by your system.", variant: "warning" });
+      return;
+    }
+
+    const sent = await triggerNotification(
+      "🔔 Oxide Deck Notification Test",
+      "Your notifications and study reminders are configured successfully!",
+      "success"
+    );
+
+    if (sent) {
+      setSaveStatus({ message: "Test notification sent!", variant: "success" });
+    } else {
+      setSaveStatus({ message: "Notification triggered (in-app toast emitted).", variant: "info" });
+    }
+  };
+
   useEffect(() => {
     const config = getAIConfig();
     setProvider(config.provider);
@@ -53,6 +89,7 @@ export default function SettingsPage() {
     setLocalUrl(config.localUrl);
     setLocalModel(config.localModel);
     setPersonalities(getLearningPersonalities());
+    setNotifSettings(getNotificationSettings());
 
     setTaskSettings({
       scan: getTaskAIConfig('scan'),
@@ -76,13 +113,14 @@ export default function SettingsPage() {
     localStorage.setItem("oxide_deck_local_url", localUrl);
     localStorage.setItem("oxide_deck_local_model", localModel);
     saveLearningPersonalities(personalities);
+    saveNotificationSettings(notifSettings);
 
     saveTaskAIConfig('scan', taskSettings.scan);
     saveTaskAIConfig('validate', taskSettings.validate);
     saveTaskAIConfig('teach', taskSettings.teach);
     saveTaskAIConfig('quiz', taskSettings.quiz);
     saveTaskAIConfig('test', taskSettings.test);
-  }, [provider, geminiKey, geminiModel, groqKey, groqModel, localUrl, localModel, personalities, taskSettings, isLoaded]);
+  }, [provider, geminiKey, geminiModel, groqKey, groqModel, localUrl, localModel, personalities, taskSettings, notifSettings, isLoaded]);
 
   const updatePersonality = (id: string, field: 'name' | 'description', value: string) => {
     setPersonalities(prev => prev.map(persona => persona.id === id ? { ...persona, [field]: value } : persona));
@@ -407,6 +445,285 @@ export default function SettingsPage() {
         </div>
 
       </form>
+
+      <div style={{ height: "24px" }} />
+      <div className="divider" />
+
+      {/* Notifications & Study Reminders Settings */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "600px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 className="section-title" style={{ fontSize: "1.2rem", margin: 0 }}>
+            <Bell size={18} /> Study Reminders & Notifications
+          </h2>
+          <button className="notion-btn secondary" onClick={handleTestNotif} type="button" style={{ fontSize: "0.82rem", gap: "6px" }}>
+            <Send size={14} /> Send Test Alert
+          </button>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid var(--border-color)",
+            borderRadius: "8px",
+            padding: "18px",
+            backgroundColor: "var(--bg-secondary)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+          }}
+        >
+          {/* Master Switch */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>Enable Notifications</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                Allow system popups and in-app alerts for scheduled reviews
+              </div>
+            </div>
+            <label className="toggle-switch" style={{ cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={notifSettings.masterEnabled}
+                onChange={(e) => handleNotifChange("masterEnabled", e.target.checked)}
+              />
+            </label>
+          </div>
+
+          {notifSettings.masterEnabled && (
+            <>
+              <div style={{ height: "1px", backgroundColor: "var(--border-color)", margin: "4px 0" }} />
+
+              {/* Daily Study Reminder */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Clock size={15} /> Daily Study Reminders
+                    </div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                      Configure reminder times for each day of the week
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.dailyReminderEnabled}
+                    onChange={(e) => handleNotifChange("dailyReminderEnabled", e.target.checked)}
+                  />
+                </div>
+
+                {notifSettings.dailyReminderEnabled && (
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                    gap: "8px",
+                    padding: "10px",
+                    backgroundColor: "var(--bg-primary, rgba(0,0,0,0.03))",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border-color)"
+                  }}>
+                    {DAY_KEYS.map((dayKey) => {
+                      const dayLabel = DAY_LABELS[dayKey];
+                      const schedule = notifSettings.weeklySchedule[dayKey] || { enabled: true, time: "20:30" };
+
+                      return (
+                        <div key={dayKey} style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "6px", borderRadius: "4px", backgroundColor: schedule.enabled ? "var(--bg-secondary)" : "transparent" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <label style={{ fontSize: "0.8rem", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
+                              <input
+                                type="checkbox"
+                                checked={schedule.enabled}
+                                onChange={(e) => {
+                                  const updatedSchedule = {
+                                    ...notifSettings.weeklySchedule,
+                                    [dayKey]: { ...schedule, enabled: e.target.checked }
+                                  };
+                                  handleNotifChange("weeklySchedule", updatedSchedule);
+                                }}
+                              />
+                              {dayLabel.full}
+                            </label>
+                          </div>
+                          <input
+                            type="time"
+                            className="notion-input"
+                            style={{ fontSize: "0.78rem", padding: "2px 4px", width: "100%" }}
+                            value={schedule.time}
+                            disabled={!schedule.enabled}
+                            onChange={(e) => {
+                              const updatedSchedule = {
+                                ...notifSettings.weeklySchedule,
+                                [dayKey]: { ...schedule, time: e.target.value }
+                              };
+                              handleNotifChange("weeklySchedule", updatedSchedule);
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Streak Active / Rest Days Settings */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Flame size={15} style={{ color: "#f59e0b" }} /> Active Streak Days (Rest Days)
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                    Select required study days. Days turned OFF count as rest days and won't break your streak!
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+                  {DAY_KEYS.map((dayKey) => {
+                    const isRequired = notifSettings.streakActiveDays[dayKey] ?? true;
+                    const dayInfo = DAY_LABELS[dayKey];
+
+                    return (
+                      <button
+                        key={dayKey}
+                        type="button"
+                        onClick={() => {
+                          const updatedDays = {
+                            ...notifSettings.streakActiveDays,
+                            [dayKey]: !isRequired
+                          };
+                          handleNotifChange("streakActiveDays", updatedDays);
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "20px",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          border: isRequired ? "1px solid var(--accent-color, #6366f1)" : "1px solid var(--border-color)",
+                          backgroundColor: isRequired ? "var(--accent-color, #6366f1)" : "transparent",
+                          color: isRequired ? "#ffffff" : "var(--text-secondary)",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        {dayInfo.full.slice(0, 3)} {isRequired ? "✓" : "(Rest)"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Due Cards Threshold Alert */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Bell size={15} /> Due Cards Threshold Alert
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                    Notify when total due cards reach or exceed count
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    className="notion-input"
+                    style={{ width: "70px", padding: "4px 8px" }}
+                    value={notifSettings.dueCardsThresholdCount}
+                    onChange={(e) => handleNotifChange("dueCardsThresholdCount", Math.max(1, parseInt(e.target.value) || 1))}
+                    disabled={!notifSettings.dueCardsThresholdEnabled}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.dueCardsThresholdEnabled}
+                    onChange={(e) => handleNotifChange("dueCardsThresholdEnabled", e.target.checked)}
+                  />
+                </div>
+              </div>
+
+              {/* Streak Saver Alert */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Flame size={15} style={{ color: "#f59e0b" }} /> Evening Streak Saver
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                    Warning alert if you haven't reviewed any cards today
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <input
+                    type="time"
+                    className="notion-input"
+                    style={{ width: "120px", padding: "4px 8px" }}
+                    value={notifSettings.streakSaverTime}
+                    onChange={(e) => handleNotifChange("streakSaverTime", e.target.value)}
+                    disabled={!notifSettings.streakSaverEnabled}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.streakSaverEnabled}
+                    onChange={(e) => handleNotifChange("streakSaverEnabled", e.target.checked)}
+                  />
+                </div>
+              </div>
+
+              {/* Quiet Hours (DND) */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Moon size={15} /> Quiet Hours (Do Not Disturb)
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                    Silence non-critical OS popups between times
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <input
+                    type="time"
+                    className="notion-input"
+                    style={{ width: "110px", padding: "4px 6px" }}
+                    value={notifSettings.quietHoursStart}
+                    onChange={(e) => handleNotifChange("quietHoursStart", e.target.value)}
+                    disabled={!notifSettings.quietHoursEnabled}
+                  />
+                  <span style={{ fontSize: "0.8rem" }}>to</span>
+                  <input
+                    type="time"
+                    className="notion-input"
+                    style={{ width: "110px", padding: "4px 6px" }}
+                    value={notifSettings.quietHoursEnd}
+                    onChange={(e) => handleNotifChange("quietHoursEnd", e.target.value)}
+                    disabled={!notifSettings.quietHoursEnabled}
+                  />
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.quietHoursEnabled}
+                    onChange={(e) => handleNotifChange("quietHoursEnabled", e.target.checked)}
+                  />
+                </div>
+              </div>
+
+              {/* Sound & In-App Toggles */}
+              <div style={{ display: "flex", gap: "20px", marginTop: "4px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.soundEnabled}
+                    onChange={(e) => handleNotifChange("soundEnabled", e.target.checked)}
+                  />
+                  <Volume2 size={15} /> Sound Effects
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.inAppToastEnabled}
+                    onChange={(e) => handleNotifChange("inAppToastEnabled", e.target.checked)}
+                  />
+                  <Bell size={15} /> In-App Banners
+                </label>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       <div style={{ height: "24px" }} />
       <div className="divider" />

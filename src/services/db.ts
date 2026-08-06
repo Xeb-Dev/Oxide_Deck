@@ -354,22 +354,60 @@ export async function getStats(): Promise<Stats> {
     });
   }
 
-  // Calculate streak based on daily activities
+  // Load notification settings to check streakActiveDays
+  let streakActiveDays: Record<string, boolean> = {
+    mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true
+  };
+  try {
+    const raw = localStorage.getItem("oxide_deck_notification_settings");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.streakActiveDays) {
+        streakActiveDays = parsed.streakActiveDays;
+      }
+    }
+  } catch {
+    // fallback defaults
+  }
+
+  const DAY_INDEX_MAP: Record<number, string> = {
+    0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat'
+  };
+
+  // Calculate streak based on daily activities and active streak days
   let streakDays = 0;
   let checkDayOffset = 0;
-  while (true) {
+  const MAX_CHECK_DAYS = 365;
+
+  while (checkDayOffset < MAX_CHECK_DAYS) {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - checkDayOffset);
+    const dayKey = DAY_INDEX_MAP[targetDate.getDay()];
+    const isRequiredDay = streakActiveDays[dayKey] ?? true;
+
     const activeRes = await db.select<{ count: number }[]>(
       `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days')`
     );
-    if (activeRes[0]?.count > 0) {
+    const hasReviewed = (activeRes[0]?.count || 0) > 0;
+
+    if (hasReviewed) {
       streakDays++;
       checkDayOffset++;
     } else {
-      // If we are checking "today" (offset 0) and it has 0, but "yesterday" (offset 1) had reviews, the streak is still alive
+      // If user did NOT review on this day:
+      // 1. Today (offset 0) has 0 reviews yet -> allow checking yesterday without breaking streak
       if (checkDayOffset === 0) {
         checkDayOffset++;
         continue;
       }
+
+      // 2. Configured Rest Day (e.g. Saturday or Sunday) -> forgive the day, don't break streak!
+      if (!isRequiredDay) {
+        checkDayOffset++;
+        continue;
+      }
+
+      // 3. Required study day with 0 reviews -> streak breaks!
       break;
     }
   }
