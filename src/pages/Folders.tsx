@@ -173,7 +173,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const loadData = async () => {
     try {
-      setLoading(true);
+      if (folders.length === 0 && decks.length === 0 && subjects.length === 0) {
+        setLoading(true);
+      }
       const f = await getFolders();
       const d = await getDecks();
       const s = await getSubjects();
@@ -511,7 +513,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setShowCardModal(true);
   };
 
-  if (loading && !selectedDeck) {
+  if (loading && !selectedDeck && folders.length === 0 && decks.length === 0 && subjects.length === 0) {
     return <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>Loading folders structure...</div>;
   }
 

@@ -12,8 +12,10 @@ import {
   X,
   FileText,
   TrendingUp,
-  Target
+  Target,
+  Search
 } from "lucide-react";
+import GlobalSearchModal from "./GlobalSearchModal";
 import { getFolders, getDecks, getSubjects, Folder, Deck, Subject, updateFolderSubject, updateDeckFolder, moveFlashcardToDeck } from "../services/db";
 import { acceptDrop, allowDrop, setDragData, handleDragAutoScroll, stopDragAutoScroll, handleDragWheel } from "../utils/dnd";
 import { getRootFolders } from "../utils/folderTree";
@@ -43,6 +45,7 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const handleDragEnter = (targetId: string) => (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
@@ -523,7 +526,15 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
               </span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              className="top-search-btn"
+              onClick={() => setIsSearchOpen(true)}
+              aria-label="Search"
+            >
+              <Search size={14} style={{ color: "var(--accent-color)" }} />
+              <span className="top-search-placeholder">Search flashcards, folders, tests...</span>
+            </button>
             <button 
               className="notion-btn workspace-quick-scan-btn" 
               style={{ padding: "4px 10px", fontSize: "0.8rem" }}
@@ -539,6 +550,12 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
           {children}
         </div>
       </main>
+
+      <GlobalSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onNavigate={handleNav}
+      />
     </div>
   );
 }

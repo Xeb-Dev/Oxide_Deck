@@ -747,3 +747,99 @@ export async function getTestAnalysisByTestId(testId: string): Promise<TestAnaly
   const rows = await db.select<TestAnalysis[]>("SELECT * FROM test_analyses WHERE test_id = $1 LIMIT 1", [testId]);
   return rows.length > 0 ? rows[0] : null;
 }
+
+export interface GlobalSearchResult {
+  flashcards: {
+    id: string;
+    deck_id: string;
+    deck_name: string;
+    front: string;
+    back: string;
+    tags: string | null;
+  }[];
+  foldersAndDecks: {
+    id: string;
+    type: 'folder' | 'deck' | 'subject';
+    name: string;
+    icon: string | null;
+    folder_id?: string | null;
+    subject_id?: string | null;
+  }[];
+  tests: {
+    id: string;
+    name: string;
+    description: string | null;
+    score: number | null;
+    max_score: number;
+    test_date: string | null;
+  }[];
+}
+
+/**
+ * Global Unified Search engine across flashcards, folders, decks, subjects, and tests using FTS5 Trigram indexing.
+ */
+export async function searchGlobal(rawQuery: string): Promise<GlobalSearchResult> {
+  const query = rawQuery.trim();
+  if (!query) {
+    return { flashcards: [], foldersAndDecks: [], tests: [] };
+  }
+
+  const db = await getDB();
+  const searchPattern = `%${query}%`;
+
+  // 1. Search Flashcards (using FTS5 trigram if available with fallback to LIKE)
+  let flashcardRows: { id: string; deck_id: string; deck_name: string; front: string; back: string; tags: string | null }[] = [];
+  try {
+    flashcardRows = await db.select(
+      `SELECT f.id, f.deck_id, d.name as deck_name, f.front, f.back, f.tags
+       FROM flashcards f
+       JOIN decks d ON f.deck_id = d.id
+       WHERE f.id IN (SELECT id FROM flashcards_fts WHERE flashcards_fts MATCH $1)
+       LIMIT 15`,
+      [query]
+    );
+  } catch {
+    // Fallback to LIKE search if FTS5 table is still populating or legacy
+    flashcardRows = await db.select(
+      `SELECT f.id, f.deck_id, d.name as deck_name, f.front, f.back, f.tags
+       FROM flashcards f
+       JOIN decks d ON f.deck_id = d.id
+       WHERE f.front LIKE $1 OR f.back LIKE $1 OR f.tags LIKE $1
+       LIMIT 15`,
+      [searchPattern]
+    );
+  }
+
+  // 2. Search Subjects, Folders, and Decks
+  const foldersAndDecks: GlobalSearchResult['foldersAndDecks'] = [];
+
+  const matchedSubjects = await db.select<{ id: string; name: string; icon: string | null }[]>(
+    "SELECT id, name, icon FROM subjects WHERE name LIKE $1 LIMIT 5",
+    [searchPattern]
+  );
+  matchedSubjects.forEach(s => foldersAndDecks.push({ id: s.id, type: 'subject', name: s.name, icon: s.icon || '📚', subject_id: s.id }));
+
+  const matchedFolders = await db.select<{ id: string; name: string; icon: string | null; subject_id: string | null }[]>(
+    "SELECT id, name, icon, subject_id FROM folders WHERE name LIKE $1 LIMIT 5",
+    [searchPattern]
+  );
+  matchedFolders.forEach(f => foldersAndDecks.push({ id: f.id, type: 'folder', name: f.name, icon: f.icon || '📁', folder_id: f.id, subject_id: f.subject_id }));
+
+  const matchedDecks = await db.select<{ id: string; name: string; icon: string | null; folder_id: string | null }[]>(
+    "SELECT id, name, icon, folder_id FROM decks WHERE name LIKE $1 OR description LIKE $1 LIMIT 5",
+    [searchPattern]
+  );
+  matchedDecks.forEach(d => foldersAndDecks.push({ id: d.id, type: 'deck', name: d.name, icon: d.icon || '🎴', folder_id: d.folder_id }));
+
+  // 3. Search Tests & Exams
+  const matchedTests = await db.select<{ id: string; name: string; description: string | null; score: number | null; max_score: number; test_date: string | null }[]>(
+    "SELECT id, name, description, score, max_score, test_date FROM tests WHERE name LIKE $1 OR description LIKE $1 LIMIT 5",
+    [searchPattern]
+  );
+
+  return {
+    flashcards: flashcardRows,
+    foldersAndDecks,
+    tests: matchedTests,
+  };
+}

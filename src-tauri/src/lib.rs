@@ -275,6 +275,22 @@ pub fn run() {
                 ALTER TABLE flashcards ADD COLUMN back_image_url TEXT;
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "create_fts5_trigram_flashcards_search",
+            sql: "
+                CREATE VIRTUAL TABLE IF NOT EXISTS flashcards_fts USING fts5(
+                    id UNINDEXED,
+                    front,
+                    back,
+                    tags,
+                    tokenizer='trigram'
+                );
+                INSERT OR IGNORE INTO flashcards_fts(id, front, back, tags)
+                SELECT id, front, back, COALESCE(tags, '') FROM flashcards;
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 
