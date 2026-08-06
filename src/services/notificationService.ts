@@ -173,14 +173,7 @@ async function getTauriNotificationPlugin(): Promise<any | null> {
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
-  if ("Notification" in window) {
-    if (Notification.permission === "granted") return true;
-    if (Notification.permission !== "denied") {
-      const perm = await Notification.requestPermission();
-      return perm === "granted";
-    }
-  }
-
+  // 1. Try native Tauri OS notification plugin first (Android / Desktop native permission dialog)
   try {
     const tauriNotif = await getTauriNotificationPlugin();
     if (tauriNotif) {
@@ -189,10 +182,19 @@ export async function requestNotificationPermission(): Promise<boolean> {
         const permission = await tauriNotif.requestPermission();
         isGranted = permission === "granted";
       }
-      return isGranted;
+      if (isGranted) return true;
     }
-  } catch {
-    // Plugin not loaded or not in Tauri context
+  } catch (e) {
+    console.warn("Tauri notification plugin error:", e);
+  }
+
+  // 2. Fallback to standard Web Notification API if not in native Tauri context
+  if ("Notification" in window) {
+    if (Notification.permission === "granted") return true;
+    if (Notification.permission !== "denied") {
+      const perm = await Notification.requestPermission();
+      return perm === "granted";
+    }
   }
 
   return false;
