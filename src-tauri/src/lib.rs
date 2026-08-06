@@ -11,7 +11,8 @@ async fn fetch_url_html(url: String) -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client.get(&url)
+    let response = client
+        .get(&url)
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -21,7 +22,8 @@ async fn fetch_url_html(url: String) -> Result<String, String> {
         return Err(format!("Server returned error status: {}", status));
     }
 
-    let body = response.text()
+    let body = response
+        .text()
         .await
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
@@ -275,21 +277,6 @@ pub fn run() {
                 ALTER TABLE flashcards ADD COLUMN back_image_url TEXT;
             ",
             kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 13,
-            description: "create_fts5_flashcards_search",
-            sql: "
-                CREATE VIRTUAL TABLE IF NOT EXISTS flashcards_fts USING fts5(
-                    id UNINDEXED,
-                    front,
-                    back,
-                    tags
-                );
-                INSERT OR IGNORE INTO flashcards_fts(id, front, back, tags)
-                SELECT id, front, back, COALESCE(tags, '') FROM flashcards;
-            ",
-            kind: MigrationKind::Up,
         }
     ];
 
@@ -299,10 +286,9 @@ pub fn run() {
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:oxide_deck.db", migrations)
-                .build()
+                .build(),
         )
         .invoke_handler(tauri::generate_handler![fetch_url_html, proxy_post_request])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

@@ -16,7 +16,6 @@ import {
   Search
 } from "lucide-react";
 import GlobalSearchModal from "./GlobalSearchModal";
-import Logo from "./Logo";
 import { getFolders, getDecks, getSubjects, Folder, Deck, Subject, updateFolderSubject, updateDeckFolder, moveFlashcardToDeck } from "../services/db";
 import { acceptDrop, allowDrop, setDragData, handleDragAutoScroll, stopDragAutoScroll, handleDragWheel } from "../utils/dnd";
 import { getRootFolders } from "../utils/folderTree";
@@ -206,7 +205,6 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
       <aside className={`sidebar${sidebarOpen ? " open" : ""}`}>
         <div className="sidebar-header">
           <div className="brand" onClick={() => handleNav({ page: 'dashboard' })} style={{ cursor: "pointer" }}>
-            <Logo size={22} />
             <span>Oxide Deck</span>
           </div>
           <div className="sidebar-header-actions">
