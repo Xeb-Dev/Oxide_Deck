@@ -7,7 +7,7 @@ import {
   Folder, Deck, Flashcard, Subject
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
-import { 
+import {
   Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload, QrCode
 } from "lucide-react";
 import MathText from "../components/MathText";
@@ -173,9 +173,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const loadData = async () => {
     try {
-      if (folders.length === 0 && decks.length === 0 && subjects.length === 0) {
-        setLoading(true);
-      }
+      setLoading(true);
       const f = await getFolders();
       const d = await getDecks();
       const s = await getSubjects();
@@ -284,7 +282,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
       setCardBackImageUrl(null);
       setEditingCard(null);
       setShowCardModal(false);
-      
+
       // Reload card list
       const cards = await getFlashcards(selectedDeck.id);
       setDeckCards(cards);
@@ -513,7 +511,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setShowCardModal(true);
   };
 
-  if (loading && !selectedDeck && folders.length === 0 && decks.length === 0 && subjects.length === 0) {
+  if (loading && !selectedDeck) {
     return <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>Loading folders structure...</div>;
   }
 
@@ -546,7 +544,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           </div>
 
           <div className="page-header-actions">
-            <button 
+            <button
               className="notion-btn"
               onClick={() => setCurrentNav({ page: 'revision', deckId: selectedDeck.id, revisionMode: 'flashcard' })}
               disabled={deckCards.length === 0}
@@ -554,7 +552,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <BookOpen size={16} />
               Review Cards ({deckCards.length})
             </button>
-            <button 
+            <button
               className="notion-btn secondary"
               onClick={() => setCurrentNav({ page: 'revision', deckId: selectedDeck.id, revisionMode: 'quiz' })}
               disabled={deckCards.length === 0}
@@ -562,7 +560,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <Sparkles size={16} />
               Take AI Quiz
             </button>
-            <button 
+            <button
               className="notion-btn secondary"
               onClick={() => setCurrentNav({ page: 'revision', deckId: selectedDeck.id, revisionMode: 'teach' })}
               disabled={deckCards.length === 0}
@@ -570,7 +568,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <Sparkles size={16} />
               Teach AI
             </button>
-            <button 
+            <button
               className="notion-btn secondary"
               title="Share via Encrypted QR Code"
               onClick={(e) => handleQrShareDeck(selectedDeck, e)}
@@ -578,7 +576,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <QrCode size={16} />
               Share QR
             </button>
-            <button 
+            <button
               className="notion-btn secondary"
               title="Export Deck (.oxdeck)"
               onClick={(e) => handleExportDeck(selectedDeck.id, e)}
@@ -610,11 +608,11 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {deckCards.map(card => (
-              <div 
-                key={card.id} 
-                style={{ 
-                  border: "1px solid var(--border-color)", 
-                  borderRadius: "8px", 
+              <div
+                key={card.id}
+                style={{
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "8px",
                   padding: "16px",
                   backgroundColor: "var(--bg-secondary)",
                   display: "flex",
@@ -652,14 +650,14 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   </div>
 
                   <div style={{ display: "flex", gap: "6px" }}>
-                    <button 
+                    <button
                       className="theme-toggle-btn"
                       title="Edit Card"
                       onClick={() => openEditCard(card)}
                     >
                       <Edit3 size={14} />
                     </button>
-                    <button 
+                    <button
                       className="theme-toggle-btn"
                       style={{ color: "var(--danger-color)" }}
                       title="Delete Card"
@@ -690,12 +688,12 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             ))}
 
             {deckCards.length === 0 && (
-              <div 
-                style={{ 
-                  border: "1px dashed var(--border-color)", 
-                  borderRadius: "8px", 
-                  padding: "40px", 
-                  textAlign: "center", 
+              <div
+                style={{
+                  border: "1px dashed var(--border-color)",
+                  borderRadius: "8px",
+                  padding: "40px",
+                  textAlign: "center",
                   color: "var(--text-muted)",
                   fontSize: "0.9rem"
                 }}
@@ -721,9 +719,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                       <span>Front (Question / Concept)</span>
                       <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Front</span>
                     </label>
-                    <textarea 
-                      className="notion-input" 
-                      rows={3} 
+                    <textarea
+                      className="notion-input"
+                      rows={3}
                       value={cardFront}
                       onChange={(e) => setCardFront(e.target.value)}
                       onDragOver={(e) => { e.preventDefault(); setIsDraggingOverFrontModal(true); }}
@@ -749,9 +747,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                       <span>Back (Answer / Definition)</span>
                       <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Back</span>
                     </label>
-                    <textarea 
-                      className="notion-input" 
-                      rows={4} 
+                    <textarea
+                      className="notion-input"
+                      rows={4}
                       value={cardBack}
                       onChange={(e) => setCardBack(e.target.value)}
                       onDragOver={(e) => { e.preventDefault(); setIsDraggingOverBackModal(true); }}
@@ -775,9 +773,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
                   <div className="notion-input-group">
                     <label>Tags (Comma separated)</label>
-                    <input 
+                    <input
                       className="notion-input"
-                      type="text" 
+                      type="text"
                       value={cardTags}
                       onChange={(e) => setCardTags(e.target.value)}
                       placeholder="biology, cells, organelles"
@@ -806,12 +804,12 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           onDismiss={() => setBanner(null)}
         />
       )}
-      <input 
-        type="file" 
-        id="oxide-package-import-input" 
-        accept=".oxdeck,.oxfolder,.oxsubject,.json" 
-        style={{ display: "none" }} 
-        onChange={handleImportFile} 
+      <input
+        type="file"
+        id="oxide-package-import-input"
+        accept=".oxdeck,.oxfolder,.oxsubject,.json"
+        style={{ display: "none" }}
+        onChange={handleImportFile}
       />
       <div className="page-header-row">
         <div>
@@ -823,15 +821,15 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
         </div>
 
         <div className="page-header-actions">
-          <button 
-            className="notion-btn secondary" 
+          <button
+            className="notion-btn secondary"
             title="Scan or paste encrypted QR Code payload"
             onClick={() => setQrScanModalOpen(true)}
           >
             <QrCode size={16} /> Import via QR
           </button>
-          <button 
-            className="notion-btn secondary" 
+          <button
+            className="notion-btn secondary"
             title="Import .oxdeck, .oxfolder, or .oxsubject package"
             onClick={() => document.getElementById('oxide-package-import-input')?.click()}
           >
@@ -872,18 +870,18 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
       {/* Grid structure of folders */}
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-        
+
         {/* Subjects List */}
         {subjects.map(subject => {
           const subjectFolders = getRootFolders(folders, subject.id);
           const isSubjectDragOver = dragOverId === subject.id;
           return (
-            <div 
-              key={subject.id} 
-              style={{ 
-                border: isSubjectDragOver ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)", 
-                borderRadius: "10px", 
-                padding: "20px", 
+            <div
+              key={subject.id}
+              style={{
+                border: isSubjectDragOver ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)",
+                borderRadius: "10px",
+                padding: "20px",
                 backgroundColor: isSubjectDragOver ? "var(--accent-light)" : "var(--bg-secondary)",
                 display: "flex",
                 flexDirection: "column",
@@ -902,10 +900,10 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 window.dispatchEvent(new Event("oxide-deck-db-refresh"));
               }}
             >
-              <div 
-                style={{ 
-                  display: "flex", 
-                  justifyContent: "space-between", 
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
                   alignItems: "center"
                 }}
               >
@@ -918,15 +916,15 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 </div>
 
                 <div style={{ display: "flex", gap: "6px" }}>
-                  <button 
-                    className="theme-toggle-btn" 
+                  <button
+                    className="theme-toggle-btn"
                     title="Share Subject via Encrypted QR Code"
                     onClick={(e) => handleQrShareSubject(subject.id, e)}
                   >
                     <QrCode size={14} />
                   </button>
-                  <button 
-                    className="theme-toggle-btn" 
+                  <button
+                    className="theme-toggle-btn"
                     title="Export Subject (.oxsubject)"
                     onClick={(e) => handleExportSubject(subject.id, e)}
                   >
@@ -976,11 +974,11 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           );
         })}
         {/* Folders with no subject (Unassigned Folders) — always shown as a drop target */}
-        <div 
-          style={{ 
-            border: dragOverId === "unassigned-folders-overview" ? "2px dashed var(--accent-color)" : "1px dashed var(--border-color)", 
-            borderRadius: "10px", 
-            padding: "20px", 
+        <div
+          style={{
+            border: dragOverId === "unassigned-folders-overview" ? "2px dashed var(--accent-color)" : "1px dashed var(--border-color)",
+            borderRadius: "10px",
+            padding: "20px",
             backgroundColor: dragOverId === "unassigned-folders-overview" ? "var(--accent-light)" : "var(--bg-secondary)",
             display: "flex",
             flexDirection: "column",
@@ -1039,12 +1037,12 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           </div>
         </div>
 
-{/* Uncategorized Decks — always shown as a drop target */}
-        <div 
-          style={{ 
-            border: dragOverId === "unassigned-decks-overview" ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)", 
-            borderRadius: "10px", 
-            overflow: "hidden", 
+        {/* Uncategorized Decks — always shown as a drop target */}
+        <div
+          style={{
+            border: dragOverId === "unassigned-decks-overview" ? "2px dashed var(--accent-color)" : "1px solid var(--border-color)",
+            borderRadius: "10px",
+            overflow: "hidden",
             backgroundColor: dragOverId === "unassigned-decks-overview" ? "var(--accent-light)" : "var(--bg-secondary)",
             transition: "all var(--transition-fast)"
           }}
@@ -1053,19 +1051,19 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           onDragLeave={handleDragLeave("unassigned-decks-overview")}
           onDrop={async (e) => {
             setDragOverId(null);
-                  const payload = acceptDrop(e, "deck");
-                  if (!payload) return;
-                  await updateDeckFolder(payload.id, null);
-              loadData();
-              window.dispatchEvent(new Event("oxide-deck-db-refresh"));
-                  }}
+            const payload = acceptDrop(e, "deck");
+            if (!payload) return;
+            await updateDeckFolder(payload.id, null);
+            loadData();
+            window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+          }}
         >
-          <div 
-            style={{ 
-              display: "flex", 
-              justifyContent: "space-between", 
-              alignItems: "center", 
-              padding: "12px 20px", 
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "12px 20px",
               borderBottom: "1px solid var(--border-color)",
               backgroundColor: "var(--bg-hover)"
             }}
@@ -1086,8 +1084,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               {decks.filter(d => !d.folder_id).map(deck => {
                 const isDeckDragOver = dragOverId === deck.id;
                 return (
-                  <div 
-                    key={deck.id} 
+                  <div
+                    key={deck.id}
                     className="deck-card"
                     onClick={() => setCurrentNav({ page: 'folders', deckId: deck.id })}
                     style={{
@@ -1102,52 +1100,52 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     onDragLeave={handleDragLeave(deck.id)}
                     onDrop={async (e) => {
                       setDragOverId(null);
-                                        const payload = acceptDrop(e, "flashcard");
-                                        if (!payload) return;
-                                        await moveFlashcardToDeck(payload.id, deck.id);
-                        loadData();
-                        window.dispatchEvent(new Event("oxide-deck-db-refresh"));
-                  }}
+                      const payload = acceptDrop(e, "flashcard");
+                      if (!payload) return;
+                      await moveFlashcardToDeck(payload.id, deck.id);
+                      loadData();
+                      window.dispatchEvent(new Event("oxide-deck-db-refresh"));
+                    }}
                   >
-                      <div className="deck-card-header">
-                        <span className="deck-card-emoji">{deck.icon || "🎴"}</span>
-                        <span className="deck-card-title">{deck.name}</span>
-                      </div>
-                      <p className="deck-card-desc">{deck.description || "No description."}</p>
-                      
-                      <div className="deck-card-meta">
-                        <span>Click to open</span>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          <button 
-                            className="theme-toggle-btn" 
-                            style={{ padding: "2px" }}
-                            onClick={(e) => openEditDeck(deck, e)}
-                          >
-                            <Edit3 size={12} />
-                          </button>
-                          <button 
-                            className="theme-toggle-btn" 
-                            style={{ color: "var(--danger-color)", padding: "2px" }}
-                            onClick={(e) => handleDeleteDeckClick(deck.id, e)}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
+                    <div className="deck-card-header">
+                      <span className="deck-card-emoji">{deck.icon || "🎴"}</span>
+                      <span className="deck-card-title">{deck.name}</span>
+                    </div>
+                    <p className="deck-card-desc">{deck.description || "No description."}</p>
+
+                    <div className="deck-card-meta">
+                      <span>Click to open</span>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <button
+                          className="theme-toggle-btn"
+                          style={{ padding: "2px" }}
+                          onClick={(e) => openEditDeck(deck, e)}
+                        >
+                          <Edit3 size={12} />
+                        </button>
+                        <button
+                          className="theme-toggle-btn"
+                          style={{ color: "var(--danger-color)", padding: "2px" }}
+                          onClick={(e) => handleDeleteDeckClick(deck.id, e)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        </div>
 
         {subjects.length === 0 && folders.length === 0 && decks.length === 0 && (
-          <div 
-            style={{ 
-              border: "1px dashed var(--border-color)", 
-              borderRadius: "8px", 
-              padding: "48px", 
-              textAlign: "center", 
+          <div
+            style={{
+              border: "1px dashed var(--border-color)",
+              borderRadius: "8px",
+              padding: "48px",
+              textAlign: "center",
               color: "var(--text-muted)",
               fontSize: "0.95rem"
             }}
@@ -1169,9 +1167,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <div className="notion-modal-content">
                 <div className="notion-input-group">
                   <label>Folder Name</label>
-                  <input 
+                  <input
                     className="notion-input"
-                    type="text" 
+                    type="text"
                     value={folderName}
                     onChange={(e) => setFolderName(e.target.value)}
                     placeholder="e.g. Science"
@@ -1181,7 +1179,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 </div>
                 <div className="notion-input-group">
                   <label>Parent Folder</label>
-                  <select 
+                  <select
                     className="notion-input"
                     value={folderParentId}
                     onChange={(e) => setFolderParentId(e.target.value)}
@@ -1194,7 +1192,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 </div>
                 <div className="notion-input-group">
                   <label>Subject Assignment</label>
-                  <select 
+                  <select
                     className="notion-input"
                     value={folderParentId !== "none" ? "inherited" : folderSubjectId}
                     onChange={(e) => setFolderSubjectId(e.target.value)}
@@ -1235,9 +1233,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <div className="notion-modal-content">
                 <div className="notion-input-group">
                   <label>Deck Name</label>
-                  <input 
+                  <input
                     className="notion-input"
-                    type="text" 
+                    type="text"
                     value={deckName}
                     onChange={(e) => setDeckName(e.target.value)}
                     placeholder="e.g. Biology Organelles"
@@ -1248,7 +1246,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 <EmojiPicker value={deckIcon} onChange={setDeckIcon} />
                 <div className="notion-input-group">
                   <label>Description</label>
-                  <textarea 
+                  <textarea
                     className="notion-input"
                     value={deckDesc}
                     onChange={(e) => setDeckDesc(e.target.value)}
@@ -1258,7 +1256,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 </div>
                 <div className="notion-input-group">
                   <label>Folder Assignment</label>
-                  <select 
+                  <select
                     className="notion-input"
                     value={deckFolderId}
                     onChange={(e) => setDeckFolderId(e.target.value)}
@@ -1291,9 +1289,9 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <div className="notion-modal-content">
                 <div className="notion-input-group">
                   <label>Subject Name</label>
-                  <input 
+                  <input
                     className="notion-input"
-                    type="text" 
+                    type="text"
                     value={subjectName}
                     onChange={(e) => setSubjectName(e.target.value)}
                     placeholder="e.g. Mathematics"

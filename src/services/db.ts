@@ -787,19 +787,20 @@ export async function searchGlobal(rawQuery: string): Promise<GlobalSearchResult
   const db = await getDB();
   const searchPattern = `%${query}%`;
 
-  // 1. Search Flashcards (using FTS5 trigram if available with fallback to LIKE)
+  // 1. Search Flashcards (using FTS5 if available with fallback to LIKE)
   let flashcardRows: { id: string; deck_id: string; deck_name: string; front: string; back: string; tags: string | null }[] = [];
   try {
+    const ftsQuery = `"${query.replace(/"/g, '""')}"*`;
     flashcardRows = await db.select(
       `SELECT f.id, f.deck_id, d.name as deck_name, f.front, f.back, f.tags
        FROM flashcards f
        JOIN decks d ON f.deck_id = d.id
        WHERE f.id IN (SELECT id FROM flashcards_fts WHERE flashcards_fts MATCH $1)
        LIMIT 15`,
-      [query]
+      [ftsQuery]
     );
   } catch {
-    // Fallback to LIKE search if FTS5 table is still populating or legacy
+    // Fallback to LIKE search if FTS5 query format fails or is building
     flashcardRows = await db.select(
       `SELECT f.id, f.deck_id, d.name as deck_name, f.front, f.back, f.tags
        FROM flashcards f

@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "oxide_deck",
-        "width": 800,
-        "height": 600,
+        "title": "Oxide Deck",
+        "width": 1000,
+        "height": 700,
         "dragDropEnabled": false
       }
     ],
