@@ -532,7 +532,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           <span>{selectedDeck.name}</span>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div className="page-header-row">
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
               <span className="page-emoji">{selectedDeck.icon || "🎴"}</span>
@@ -543,7 +543,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div className="page-header-actions">
             <button 
               className="notion-btn"
               onClick={() => setCurrentNav({ page: 'revision', deckId: selectedDeck.id, revisionMode: 'flashcard' })}
@@ -811,7 +811,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
         style={{ display: "none" }} 
         onChange={handleImportFile} 
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div className="page-header-row">
         <div>
           <div className="page-emoji">📁</div>
           <h1 className="page-title">Folders & Decks</h1>
@@ -820,7 +820,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div className="page-header-actions">
           <button 
             className="notion-btn secondary" 
             title="Scan or paste encrypted QR Code payload"

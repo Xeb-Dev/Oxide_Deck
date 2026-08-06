@@ -37,8 +37,8 @@ export default function ToastBanner() {
   return (
     <div style={{
       position: "fixed",
-      top: "1.25rem",
-      right: "1.25rem",
+      top: "calc(1.25rem + env(safe-area-inset-top, 0px))",
+      right: "calc(1.25rem + env(safe-area-inset-right, 0px))",
       zIndex: 9999,
       display: "flex",
       flexDirection: "column",

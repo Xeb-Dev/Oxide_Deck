@@ -85,9 +85,11 @@ body {
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   background-color: var(--bg-primary);
   transition: background-color var(--transition-normal);
+  padding: 0;
 }
 
 /* Sidebar Styling */
@@ -104,11 +106,13 @@ body {
 }
 
 .sidebar-header {
-  height: var(--header-height);
+  min-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: 16px;
   font-family: var(--font-title);
   font-weight: 700;
   font-size: 1.1rem;
@@ -215,6 +219,8 @@ body {
 
 .sidebar-footer {
   padding: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
   border-top: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -250,11 +256,13 @@ body {
 }
 
 .workspace-header {
-  height: var(--header-height);
+  min-height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  padding: 0 24px;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
   justify-content: space-between;
   background-color: var(--bg-primary);
   z-index: 10;
@@ -270,6 +278,12 @@ body {
 .sidebar-menu-btn {
   display: none;
   flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
 }
 
 .breadcrumbs {
@@ -1042,8 +1056,44 @@ select.form-input:disabled {
   font-size: 0.95em;
 }
 
+/* Page Header Layouts */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 /* ── Mobile layout ────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
+  .page-header-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .page-header-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .page-header-actions .notion-btn {
+    justify-content: center;
+    width: 100%;
+    font-size: 0.82rem;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
   .sidebar {
     position: fixed;
     top: 0;
@@ -1068,15 +1118,27 @@ select.form-input:disabled {
   }
 
   .sidebar-menu-btn {
-    display: flex;
+    display: flex !important;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+    align-items: center;
+    justify-content: center;
   }
 
   .sidebar-close-btn {
-    display: flex;
+    display: flex !important;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
   }
 
   .workspace-header {
-    padding: 0 16px;
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
   }
 
   .workspace-content {
@@ -1358,5 +1420,26 @@ select.form-input:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Mobile & Phone Safe Area Adjustments */
+@media (max-width: 768px) {
+  .workspace-content {
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    gap: 20px;
+  }
+  .sidebar-menu-btn {
+    display: flex !important;
+  }
+  h1.page-title {
+    font-size: 1.65rem;
+  }
+  .page-emoji {
+    font-size: 2.2rem;
+  }
+  .stats-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
 }
 
