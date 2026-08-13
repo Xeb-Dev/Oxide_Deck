@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Plus, Trash2, Edit3, Loader2, Sparkles, Image as ImageIcon,
   Type, FileUp, ClipboardList, ChevronLeft, BarChart3, Eye,
@@ -13,7 +13,7 @@ import {
 import {
   scanTextForTestQuestions, scanPdfForTestQuestions, scanImageForTestQuestions,
   reviewTestAnswers, TestQuestionReview, analyzeTestMetadata, autoFillAndGradeTestForm,
-  analyzeTestWithAI, FullTestAnalysisResult, ExtractedTestQuestion,
+  analyzeTestWithAI, FullTestAnalysisResult, ExtractedTestQuestion, is503Error,
 } from "../services/llm";
 import { extractStructuredTextFromPDF, buildPdfPromptText, PdfExtractionResult } from "../services/pdf";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
@@ -44,6 +44,8 @@ const QUESTION_TYPES: TestQuestionType[] = ["multiple-choice", "short-answer", "
 function emptyQuestion(): EditableQuestion {
   return { type: "short-answer", question: "", options: [], correctAnswer: "", userAnswer: "", score: "", mathWork: "" };
 }
+
+const SERVICE_UNAVAILABLE_MSG = "AI Service Unavailable (503). The AI provider is temporarily overloaded or unavailable. Please try again in a few moments.";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: Props) {
@@ -76,6 +78,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   const [extractedQuestions, setExtractedQuestions] = useState<EditableQuestion[]>([]);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [detailTest, setDetailTest] = useState<Test | null>(null);
   const [detailQuestions, setDetailQuestions] = useState<TestQuestion[]>([]);
@@ -223,17 +226,31 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
       setStatus({ message: `AI Analysis complete! ${analysisResult.errors.length} error(s) logged to Scores tab.`, variant: "success" });
     } catch (err: any) {
       console.error(err);
-      setStatus({ message: err?.message || "AI Analysis failed.", variant: "error" });
+      if (is503Error(err)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
+      } else {
+        setStatus({ message: err?.message || "AI Analysis failed.", variant: "error" });
+      }
     } finally {
       setAnalyzingTestId(null);
     }
   };
 
+  const stopScanning = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setScanning(false);
+    setStatus({ message: "Operation stopped.", variant: "info" });
+  };
+
   // Auto-fill the metadata form (name, description, score, max_score, test_date) from scanned content.
   // Only fills fields that are currently empty/default so it doesn't overwrite user edits.
-  const autoFillMetadata = async (sourceText: string, questions: ExtractedTestQuestion[]) => {
+  const autoFillMetadata = async (sourceText: string, questions: ExtractedTestQuestion[], signal?: AbortSignal) => {
     try {
-      const meta = await analyzeTestMetadata(sourceText, questions);
+      const meta = await analyzeTestMetadata(sourceText, questions, signal);
+      if (signal?.aborted) return;
       if (!editName.trim() && meta.name) setEditName(meta.name);
       if (!editDescription.trim() && meta.description) setEditDescription(meta.description);
 
@@ -249,36 +266,46 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
       if (computedMaxScore != null) setEditMaxScore(String(computedMaxScore));
       if ((!editTestDate || editTestDate === new Date().toISOString().slice(0, 10)) && meta.testDate) setEditTestDate(meta.testDate);
       if (!editTimeLimit && meta.timeLimitMinutes) setEditTimeLimit(String(meta.timeLimitMinutes));
-    } catch (e) {
-      console.error("Auto-fill metadata failed:", e);
+    } catch (e: any) {
+      if (e?.name !== "AbortError" && !signal?.aborted) {
+        console.error("Auto-fill metadata failed:", e);
+      }
     }
   };
 
   const handleAutoFillAllAndGrade = async () => {
-    if (extractedQuestions.length === 0 && !scanText.trim()) {
+    if (scanning) {
+      stopScanning();
+      return;
+    }
+    if (extractedQuestions.length === 0 && !scanText.trim() && images.length === 0 && !pdfExtraction) {
       setStatus({ message: "Please add questions or scan text first.", variant: "warning" });
       return;
     }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setScanning(true);
     try {
       const formattedQuestions = extractedQuestions.map((q) => ({
         ...q,
         score: q.score.trim() === "" ? null : Number(q.score),
       }));
-      const result = await autoFillAndGradeTestForm(formattedQuestions, scanText);
+      const result = await autoFillAndGradeTestForm(formattedQuestions, scanText, controller.signal);
+      if (controller.signal.aborted) return;
+
       if (result.name && (!editName.trim() || editName === "")) setEditName(result.name);
       if (result.description && (!editDescription.trim() || editDescription === "")) setEditDescription(result.description);
 
       const updatedQs = (result.questions && result.questions.length > 0)
         ? result.questions.map((q) => ({
-            type: (q.type as TestQuestionType) || "short-answer",
-            question: q.question,
-            options: q.options ?? [],
-            correctAnswer: q.correctAnswer ?? "",
-            userAnswer: q.userAnswer ?? "",
-            score: q.score != null ? String(q.score) : "",
-            mathWork: q.mathWork ?? "",
-          }))
+          type: (q.type as TestQuestionType) || "short-answer",
+          question: q.question,
+          options: q.options ?? [],
+          correctAnswer: q.correctAnswer ?? "",
+          userAnswer: q.userAnswer ?? "",
+          score: q.score != null ? String(q.score) : "",
+          mathWork: q.mathWork ?? "",
+        }))
         : extractedQuestions;
 
       if (result.questions && result.questions.length > 0) {
@@ -303,25 +330,56 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
 
       setStatus({ message: "AI auto-filled all fields & calculated total score!", variant: "success" });
     } catch (e: any) {
-      console.error(e);
-      setStatus({ message: e?.message || "Auto-fill failed.", variant: "error" });
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        setStatus({ message: "Auto-fill stopped.", variant: "info" });
+      } else if (is503Error(e)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
+      } else {
+        console.error(e);
+        setStatus({ message: e?.message || "Auto-fill failed.", variant: "error" });
+      }
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setScanning(false);
     }
   };
 
   const handleScanText = async () => {
+    if (scanning) {
+      stopScanning();
+      return;
+    }
     if (!scanText.trim()) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setScanning(true);
     try {
-      const result = await scanTextForTestQuestions(scanText);
+      const result = await scanTextForTestQuestions(scanText, controller.signal);
+      if (controller.signal.aborted) return;
       setExtractedQuestions(result.map((q) => ({
         type: q.type, question: q.question, options: q.options ?? [], correctAnswer: q.correctAnswer ?? "", userAnswer: q.userAnswer ?? "", score: q.score != null ? String(q.score) : "", mathWork: q.mathWork ?? "",
       })));
-      await autoFillMetadata(scanText, result);
-      setStatus({ message: `Extracted ${result.length} question(s).`, variant: "success" });
-    } catch (e: any) { console.error(e); setStatus({ message: e?.message || "Scan failed.", variant: "error" }); }
-    finally { setScanning(false); }
+      await autoFillMetadata(scanText, result, controller.signal);
+      if (!controller.signal.aborted) {
+        setStatus({ message: `Extracted ${result.length} question(s).`, variant: "success" });
+      }
+    } catch (e: any) {
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        setStatus({ message: "Scan stopped.", variant: "info" });
+      } else if (is503Error(e)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
+      } else {
+        console.error(e);
+        setStatus({ message: e?.message || "Scan failed.", variant: "error" });
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setScanning(false);
+    }
   };
 
   const handlePdfUpload = async (file: File) => {
@@ -337,18 +395,40 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   };
 
   const handleScanPdf = async () => {
+    if (scanning) {
+      stopScanning();
+      return;
+    }
     if (!pdfExtraction) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setScanning(true);
     try {
       const pdfText = buildPdfPromptText(pdfExtraction);
-      const result = await scanPdfForTestQuestions(pdfText);
+      const result = await scanPdfForTestQuestions(pdfText, controller.signal);
+      if (controller.signal.aborted) return;
       setExtractedQuestions(result.map((q) => ({
         type: q.type, question: q.question, options: q.options ?? [], correctAnswer: q.correctAnswer ?? "", userAnswer: q.userAnswer ?? "", score: q.score != null ? String(q.score) : "", mathWork: q.mathWork ?? "",
       })));
-      await autoFillMetadata(pdfText, result);
-      setStatus({ message: `Extracted ${result.length} question(s) from PDF.`, variant: "success" });
-    } catch (e: any) { console.error(e); setStatus({ message: e?.message || "PDF scan failed.", variant: "error" }); }
-    finally { setScanning(false); }
+      await autoFillMetadata(pdfText, result, controller.signal);
+      if (!controller.signal.aborted) {
+        setStatus({ message: `Extracted ${result.length} question(s) from PDF.`, variant: "success" });
+      }
+    } catch (e: any) {
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        setStatus({ message: "Scan stopped.", variant: "info" });
+      } else if (is503Error(e)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
+      } else {
+        console.error(e);
+        setStatus({ message: e?.message || "PDF scan failed.", variant: "error" });
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setScanning(false);
+    }
   };
 
   const readFileAsDataUrl = (file: File): Promise<{ dataUrl: string; base64: string; mime: string; name: string }> =>
@@ -365,33 +445,69 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   const handleImagesAdded = async (fileList: FileList | File[]) => {
     const imageFiles = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
     if (imageFiles.length === 0) return;
-    setScanning(true);
     try {
-      // Add all images to the gallery first
       const loaded = await Promise.all(imageFiles.map(readFileAsDataUrl));
       setImages((prev) => [...prev, ...loaded]);
+      setStatus({ message: `Added ${loaded.length} image(s). Click 'Extract Questions' to scan.`, variant: "info" });
+    } catch (e: any) {
+      console.error(e);
+      setStatus({ message: e?.message || "Image upload failed.", variant: "error" });
+    }
+  };
 
-      // Scan each image and merge questions
+  const handleScanImages = async () => {
+    if (scanning) {
+      stopScanning();
+      return;
+    }
+    if (images.length === 0) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setScanning(true);
+    let errorOccurred: any = null;
+    try {
       const allQuestions: ExtractedTestQuestion[] = [];
-      for (const img of loaded) {
+      for (const img of images) {
+        if (controller.signal.aborted) break;
         try {
-          const result = await scanImageForTestQuestions(img.base64, img.mime);
+          const result = await scanImageForTestQuestions(img.base64, img.mime, controller.signal);
           allQuestions.push(...result);
-        } catch (e) { console.error(`Failed to scan ${img.name}:`, e); }
+        } catch (e: any) {
+          if (controller.signal.aborted || e?.name === 'AbortError') break;
+          console.error(`Failed to scan ${img.name}:`, e);
+          errorOccurred = e;
+        }
       }
+      if (controller.signal.aborted) return;
       const editableQuestions: EditableQuestion[] = allQuestions.map((q) => ({
         type: q.type, question: q.question, options: q.options ?? [], correctAnswer: q.correctAnswer ?? "", userAnswer: q.userAnswer ?? "", score: q.score != null ? String(q.score) : "", mathWork: q.mathWork ?? "",
       }));
       if (editableQuestions.length > 0) {
         setExtractedQuestions((prev) => [...prev, ...editableQuestions]);
-        // Auto-fill metadata from the extracted questions (no raw text for images)
-        await autoFillMetadata(JSON.stringify(allQuestions.map((q) => ({ question: q.question, correctAnswer: q.correctAnswer, userAnswer: q.userAnswer }))), allQuestions);
-        setStatus({ message: `Added ${loaded.length} image(s). Extracted ${editableQuestions.length} question(s).`, variant: "success" });
+        await autoFillMetadata(JSON.stringify(allQuestions.map((q) => ({ question: q.question, correctAnswer: q.correctAnswer, userAnswer: q.userAnswer }))), allQuestions, controller.signal);
+        if (!controller.signal.aborted) {
+          setStatus({ message: `Added ${images.length} image(s). Extracted ${editableQuestions.length} question(s).`, variant: "success" });
+        }
+      } else if (errorOccurred && is503Error(errorOccurred)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
       } else {
-        setStatus({ message: `Added ${loaded.length} image(s), but no questions could be extracted.`, variant: "warning" });
+        setStatus({ message: `Added ${images.length} image(s), but no questions could be extracted.`, variant: "warning" });
       }
-    } catch (e: any) { console.error(e); setStatus({ message: e?.message || "Image upload failed.", variant: "error" }); }
-    finally { setScanning(false); }
+    } catch (e: any) {
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        setStatus({ message: "Scan stopped.", variant: "info" });
+      } else if (is503Error(e)) {
+        setStatus({ message: SERVICE_UNAVAILABLE_MSG, variant: "error" });
+      } else {
+        console.error(e);
+        setStatus({ message: e?.message || "Image scan failed.", variant: "error" });
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setScanning(false);
+    }
   };
 
   const removeImage = (idx: number) => {
@@ -484,7 +600,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
         editTestDate={editTestDate} setEditTestDate={setEditTestDate} editTimeLimit={editTimeLimit} setEditTimeLimit={setEditTimeLimit}
         scanTab={scanTab} setScanTab={setScanTab}
         scanText={scanText} setScanText={setScanText} onScanText={handleScanText} onPdfUpload={handlePdfUpload}
-        onScanPdf={handleScanPdf} pdfExtraction={pdfExtraction} onImagesAdded={handleImagesAdded}
+        onScanPdf={handleScanPdf} pdfExtraction={pdfExtraction} onImagesAdded={handleImagesAdded} onScanImages={handleScanImages}
         onRemoveImage={removeImage} onDrop={handleDrop} dragOver={dragOver} setDragOver={setDragOver}
         images={images} extractedQuestions={extractedQuestions} addManualQuestion={addManualQuestion}
         updateQuestion={updateQuestion} deleteQuestion={deleteQuestion} scanning={scanning} saving={saving}
@@ -786,6 +902,7 @@ interface EditViewProps {
   onScanPdf: () => void;
   pdfExtraction: PdfExtractionResult | null;
   onImagesAdded: (files: FileList | File[]) => void;
+  onScanImages: () => void;
   onRemoveImage: (idx: number) => void;
   onDrop: (e: React.DragEvent) => void;
   dragOver: boolean;
@@ -808,9 +925,9 @@ function EditView(props: EditViewProps) {
     editDescription, setEditDescription, editScore, setEditScore, editMaxScore,
     setEditMaxScore, editTestDate, setEditTestDate, editTimeLimit, setEditTimeLimit,
     scanTab, setScanTab, scanText, setScanText, onScanText, onPdfUpload, onScanPdf,
-    pdfExtraction, onImagesAdded, onRemoveImage, onDrop, dragOver, setDragOver,
+    pdfExtraction, onImagesAdded, onScanImages, onRemoveImage, onDrop, dragOver, setDragOver,
     images, extractedQuestions, addManualQuestion, updateQuestion, deleteQuestion,
-    scanning, saving, onAutoFillAllAndGrade, onSave, onCancel, status, setStatus,
+    scanning, saving, onAutoFillAllAndGrade: _onAutoFillAllAndGrade, onSave, onCancel, status, setStatus,
   } = props;
 
   return (
@@ -887,9 +1004,9 @@ function EditView(props: EditViewProps) {
             {scanTab === "text" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <textarea className="form-input" value={scanText} onChange={(e) => setScanText(e.target.value)} rows={6} placeholder="Paste the test questions text here…" />
-                <button className="notion-btn primary" onClick={onScanText} disabled={scanning || !scanText.trim()}>
+                <button className="notion-btn primary" onClick={onScanText} disabled={!scanning && !scanText.trim()}>
                   {scanning ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
-                  Extract Questions
+                  {scanning ? "Stop Extracting" : "Extract Questions"}
                 </button>
               </div>
             )}
@@ -902,9 +1019,9 @@ function EditView(props: EditViewProps) {
                     PDF loaded ({pdfExtraction.fullText.length} chars). Has selectable text: {pdfExtraction.hasSelectableText ? "yes" : "no"}
                   </div>
                 )}
-                <button className="notion-btn primary" onClick={onScanPdf} disabled={scanning || !pdfExtraction}>
+                <button className="notion-btn primary" onClick={onScanPdf} disabled={!scanning && !pdfExtraction}>
                   {scanning ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
-                  Extract Questions
+                  {scanning ? "Stop Extracting" : "Extract Questions"}
                 </button>
               </div>
             )}
@@ -935,24 +1052,30 @@ function EditView(props: EditViewProps) {
                 </div>
 
                 {images.length > 0 && (
-                  <div className="test-image-gallery">
-                    {images.map((img, idx) => (
-                      <div key={idx} className="test-image-thumb">
-                        <img src={img.dataUrl} alt={img.name} />
-                        <button
-                          className="test-image-remove"
-                          onClick={(e) => { e.stopPropagation(); onRemoveImage(idx); }}
-                          title="Remove image"
-                        >
-                          <X size={12} />
-                        </button>
-                        <span className="test-image-name">{img.name}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="test-image-gallery">
+                      {images.map((img, idx) => (
+                        <div key={idx} className="test-image-thumb">
+                          <img src={img.dataUrl} alt={img.name} />
+                          <button
+                            className="test-image-remove"
+                            onClick={(e) => { e.stopPropagation(); onRemoveImage(idx); }}
+                            title="Remove image"
+                          >
+                            <X size={12} />
+                          </button>
+                          <span className="test-image-name">{img.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="notion-btn primary" onClick={onScanImages} disabled={!scanning && images.length === 0}>
+                      {scanning ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
+                      {scanning ? "Stop Extracting" : "Extract Questions"}
+                    </button>
+                  </>
                 )}
 
-                {scanning && (
+                {scanning && images.length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
                     <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Scanning {images.length} image(s)…
                   </div>
@@ -969,10 +1092,6 @@ function EditView(props: EditViewProps) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
             <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>Questions ({extractedQuestions.length})</span>
             <div style={{ display: "flex", gap: "8px" }}>
-              <button className="notion-btn secondary" onClick={onAutoFillAllAndGrade} disabled={scanning} title="AI will fill missing correct answers, evaluate user answers, and calculate total score">
-                {scanning ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
-                Auto-fill & Calculate Score
-              </button>
               <button className="notion-btn secondary" onClick={addManualQuestion}><Plus size={14} /> Add Question</button>
             </div>
           </div>

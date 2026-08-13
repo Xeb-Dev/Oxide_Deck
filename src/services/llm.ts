@@ -13,6 +13,17 @@ export interface AIConfig {
 
 export type LLMTask = 'scan' | 'validate' | 'teach' | 'quiz' | 'test';
 
+export function is503Error(error: any): boolean {
+  if (!error) return false;
+  const msg = typeof error === 'string' ? error : (error.message || String(error));
+  return (
+    msg.includes('503') ||
+    msg.toLowerCase().includes('service unavailable') ||
+    msg.toLowerCase().includes('overloaded') ||
+    msg.toLowerCase().includes('high demand')
+  );
+}
+
 export interface TaskAIConfig {
   provider: 'global' | 'gemini' | 'groq' | 'local';
   model: string;
@@ -126,7 +137,7 @@ export function saveLearningPersonalities(personalities: LearningPersonality[]):
   localStorage.setItem('oxide_deck_learning_personalities', JSON.stringify(cleanPersonalities));
 }
 
-async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imageBase64?: string, imageMimeType?: string): Promise<string> {
+async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imageBase64?: string, imageMimeType?: string, signal?: AbortSignal): Promise<string> {
   const config = getAIConfig();
   const taskConfig = getTaskAIConfig(task);
 
@@ -168,11 +179,15 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
       },
       body: JSON.stringify({
         contents: [{ parts }]
-      })
+      }),
+      signal,
     });
 
     if (!response.ok) {
       const errText = await response.text();
+      if (response.status === 503) {
+        throw new Error(`503 Service Unavailable: AI provider is overloaded or temporarily unavailable.`);
+      }
       throw new Error(`Gemini API Error: ${response.status} - ${errText}`);
     }
 
@@ -213,11 +228,15 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model, messages, temperature: 0.2 })
+      body: JSON.stringify({ model, messages, temperature: 0.2 }),
+      signal,
     });
 
     if (!response.ok) {
       const errText = await response.text();
+      if (response.status === 503) {
+        throw new Error(`503 Service Unavailable: AI provider is overloaded or temporarily unavailable.`);
+      }
       throw new Error(`Groq API Error: ${response.status} - ${errText}`);
     }
 
@@ -229,6 +248,9 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
     return text;
 
   } else if (provider === 'local') {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
     // Local LLM (LM Studio / Ollama): route through Rust proxy to avoid
     // Tauri WebView CORS restrictions which strip the JSON body on localhost requests.
     const { invoke } = await import('@tauri-apps/api/core');
@@ -267,6 +289,10 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
       });
     } catch (e: any) {
       throw new Error(`Local LLM request failed: ${e}`);
+    }
+
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
     }
 
     let data: any;
@@ -766,7 +792,7 @@ export interface AnalyzedTestMetadata {
 /**
  * AI scans raw text (e.g. pasted exam content) and extracts structured test questions.
  */
-export async function scanTextForTestQuestions(text: string): Promise<ExtractedTestQuestion[]> {
+export async function scanTextForTestQuestions(text: string, signal?: AbortSignal): Promise<ExtractedTestQuestion[]> {
   const systemPrompt = `You are an expert educational AI. Analyze the provided text, which contains a completed or blank exam or test paper (including any student written answers), and extract each question as a structured object.
 Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
 Each object in the array must have the following structure:
@@ -788,7 +814,7 @@ Rules:
 - For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
 
   const prompt = `Please extract the test questions from the following text:\n\n${text}`;
-  const responseText = await callLLM('test', prompt, systemPrompt);
+  const responseText = await callLLM('test', prompt, systemPrompt, undefined, undefined, signal);
   const parsed = parseJsonArrayResponse<any>(
     responseText,
     "AI response was not in the expected JSON format. Please try again.",
@@ -807,7 +833,7 @@ Rules:
 /**
  * AI scans PDF-derived text and extracts structured test questions.
  */
-export async function scanPdfForTestQuestions(promptText: string): Promise<ExtractedTestQuestion[]> {
+export async function scanPdfForTestQuestions(promptText: string, signal?: AbortSignal): Promise<ExtractedTestQuestion[]> {
   const systemPrompt = `You are an expert educational AI. Analyze the provided PDF text, which contains a completed or blank exam or test paper (including any student written answers), and extract each question as a structured object.
 Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
 Each object in the array must have the following structure:
@@ -829,7 +855,7 @@ Rules:
 - For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
 
   const prompt = `Please extract the test questions from the following PDF text:\n\n${promptText}`;
-  const responseText = await callLLM('test', prompt, systemPrompt);
+  const responseText = await callLLM('test', prompt, systemPrompt, undefined, undefined, signal);
   const parsed = parseJsonArrayResponse<any>(
     responseText,
     "AI response for the PDF scan was not in the expected JSON format. Please try again.",
@@ -848,7 +874,7 @@ Rules:
 /**
  * AI scans an image (photo of an exam paper) and extracts structured test questions.
  */
-export async function scanImageForTestQuestions(base64Image: string, mimeType: string): Promise<ExtractedTestQuestion[]> {
+export async function scanImageForTestQuestions(base64Image: string, mimeType: string, signal?: AbortSignal): Promise<ExtractedTestQuestion[]> {
   const systemPrompt = `You are an expert educational AI. Analyze the provided image, which is a photo or scan of an exam or test paper (including any student handwritten/selected answers). Extract each question as a structured object.
 Output ONLY a JSON array of objects. Do not include any conversational text or markdown code blocks.
 Each object in the array must have the following structure:
@@ -870,7 +896,7 @@ Rules:
 - For mathematical or equation questions (or when step-by-step working out is shown on paper), set type to "maths" and transcribe or provide the step-by-step working out in "mathWork".`;
 
   const prompt = "Please scan this image of an exam/test paper and extract all the questions.";
-  const responseText = await callLLM('test', prompt, systemPrompt, base64Image, mimeType);
+  const responseText = await callLLM('test', prompt, systemPrompt, base64Image, mimeType, signal);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -968,6 +994,7 @@ The array must contain one object per question, in the same order as the input.`
 export async function analyzeTestMetadata(
   sourceText: string,
   questions: ExtractedTestQuestion[],
+  signal?: AbortSignal,
 ): Promise<{ name: string; description: string; score: number | null; maxScore: number; testDate: string | null; timeLimitMinutes: number | null }> {
   const systemPrompt = `You are an expert educational test analyzer.
 Given source text from an exam paper and its extracted questions, extract or infer metadata for the test:
@@ -986,7 +1013,7 @@ Rules:
 - Set "timeLimitMinutes" if a time limit (e.g. "Time allowed: 1 Hour", "Time: 90 mins") is printed on the paper; otherwise null.`;
 
   const prompt = `Source text from the test paper:\n\n${sourceText.slice(0, 4000)}\n\nExtracted questions (${questions.length}):\n${JSON.stringify(questions.map((q) => ({ type: q.type, question: q.question, correctAnswer: q.correctAnswer, userAnswer: q.userAnswer, score: q.score })), null, 2)}`;
-  const responseText = await callLLM('test', prompt, systemPrompt);
+  const responseText = await callLLM('test', prompt, systemPrompt, undefined, undefined, signal);
 
   try {
     const cleaned = cleanJson(responseText);
@@ -1016,6 +1043,7 @@ Rules:
 export async function autoFillAndGradeTestForm(
   questions: { type: string; question: string; options?: string[]; correctAnswer?: string; userAnswer?: string; score?: number | null; mathWork?: string }[],
   sourceText?: string,
+  signal?: AbortSignal,
 ): Promise<{
   name: string;
   description: string;
@@ -1059,7 +1087,7 @@ Object structure:
 }`;
 
   const prompt = `Please complete auto-fill and grade analysis for this test form:\n${sourceText ? `Source Text:\n${sourceText.slice(0, 3000)}\n\n` : ''}Questions:\n${JSON.stringify(questions, null, 2)}`;
-  const responseText = await callLLM('test', prompt, systemPrompt);
+  const responseText = await callLLM('test', prompt, systemPrompt, undefined, undefined, signal);
 
   try {
     const cleaned = cleanJson(responseText);
