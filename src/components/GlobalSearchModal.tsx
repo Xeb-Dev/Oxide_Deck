@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, X, Folder, BookOpen, FileText, ChevronRight, AlertCircle, Target, Sparkles } from "lucide-react";
+import { Search, X, Folder, BookOpen, FileText, ChevronRight, AlertCircle } from "lucide-react";
 import { searchGlobal, GlobalSearchResult } from "../services/db";
 import MathText from "./MathText";
 
@@ -45,11 +45,7 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
   if (!isOpen) return null;
 
   const totalResults = results
-    ? results.flashcards.length +
-      results.foldersAndDecks.length +
-      results.tests.length +
-      results.studyFocusPoints.length +
-      results.aiInsights.length
+    ? results.flashcards.length + results.foldersAndDecks.length + results.tests.length
     : 0;
 
   const handleSelectDeck = (deckId: string) => {
@@ -67,19 +63,14 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
     onClose();
   };
 
-  const handleSelectScores = () => {
-    onNavigate({ page: 'scores' });
-    onClose();
-  };
-
   return (
     <div
+      className="search-modal-container"
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 9999,
-        backgroundColor: "rgba(0, 0, 0, 0.45)",
-        backdropFilter: "blur(4px)",
+        backgroundColor: "rgba(0, 0, 0, 0.55)",
         display: "flex",
         alignItems: "flex-start",
         justifyContent: "center",
@@ -96,7 +87,7 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
           width: "100%",
           maxWidth: "640px",
           borderRadius: "12px",
-          boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.25), 0 10px 15px -5px rgba(0, 0, 0, 0.1)",
+          boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.35), 0 10px 15px -5px rgba(0, 0, 0, 0.2)",
           border: "1px solid var(--border-color, #e5e7eb)",
           display: "flex",
           flexDirection: "column",
@@ -111,13 +102,13 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
+            gap: "12px",
             padding: "14px 18px",
             borderBottom: "1px solid var(--border-color, #e5e7eb)",
             backgroundColor: "var(--bg-secondary, #f9fafb)",
           }}
         >
-          <Search size={20} style={{ color: "var(--accent-color, #6366f1)", flexShrink: 0 }} />
+          <Search size={20} style={{ color: "var(--accent-color, #6366f1)", flexShrink: 0, strokeWidth: 2.2 }} />
           <input
             ref={inputRef}
             type="text"
@@ -128,6 +119,9 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
               backgroundColor: "transparent",
               fontSize: "1.05rem",
               fontWeight: 500,
+              color: "var(--text-primary)",
+              lineHeight: 1.4,
+              letterSpacing: "-0.01em",
               width: "100%",
               boxShadow: "none"
             }}
@@ -157,20 +151,20 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
         {/* Results Container */}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
           {loading && (
-            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.4 }}>
               Searching...
             </div>
           )}
 
           {!loading && !query.trim() && (
-            <div style={{ padding: "30px 20px", textAlign: "center", color: "var(--text-muted)", fontSize: "0.88rem" }}>
+            <div style={{ padding: "30px 20px", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.9rem", fontWeight: 500, lineHeight: 1.4, letterSpacing: "-0.01em" }}>
               Type keyword to find flashcards, folders, decks, or tests.
             </div>
           )}
 
           {!loading && query.trim() && totalResults === 0 && (
-            <div style={{ padding: "35px 20px", textAlign: "center", color: "var(--text-secondary)" }}>
-              <AlertCircle size={24} style={{ marginBottom: "8px", opacity: 0.6 }} />
+            <div style={{ padding: "35px 20px", textAlign: "center", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              <AlertCircle size={24} style={{ marginBottom: "8px", color: "var(--text-secondary)" }} />
               <div>No results found for "<strong>{query}</strong>"</div>
             </div>
           )}
@@ -299,88 +293,6 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
                           )}
                         </div>
                         <ChevronRight size={16} style={{ color: "var(--text-muted)" }} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Study Focus Points Section */}
-              {results.studyFocusPoints.length > 0 && (
-                <div>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Target size={14} style={{ color: "#8b5cf6" }} /> Study Focus Points ({results.studyFocusPoints.length})
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    {results.studyFocusPoints.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={handleSelectScores}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          padding: "10px 12px",
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          backgroundColor: "var(--bg-secondary, #f9fafb)",
-                          border: "1px solid var(--border-color, #e5e7eb)",
-                          transition: "all 0.15s ease"
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#8b5cf6" }}>
-                            🎯 {item.subject_name} · {item.test_name}
-                          </span>
-                        </div>
-                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
-                          <MathText>{item.question_text}</MathText>
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          💡 <MathText>{item.error_reason}</MathText>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* AI Insights Section */}
-              {results.aiInsights.length > 0 && (
-                <div>
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Sparkles size={14} style={{ color: "var(--accent-color)" }} /> AI Diagnostic Insights ({results.aiInsights.length})
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    {results.aiInsights.map((insight) => (
-                      <div
-                        key={insight.id}
-                        onClick={handleSelectScores}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          padding: "10px 12px",
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          backgroundColor: "var(--bg-secondary, #f9fafb)",
-                          border: "1px solid var(--border-color, #e5e7eb)",
-                          transition: "all 0.15s ease"
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--accent-color)" }}>
-                            ✨ {insight.subject_name} · {insight.test_name}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 500, lineHeight: 1.4 }}>
-                          {insight.summary}
-                        </div>
-                        {insight.recommendations && (
-                          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            Focus: {insight.recommendations}
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>

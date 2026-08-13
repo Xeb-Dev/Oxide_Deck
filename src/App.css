@@ -17,16 +17,20 @@
   --text-primary: #37352f;
   --text-secondary: #787774;
   --text-muted: #9f9e9a;
-  
-  --accent-color: #2383e2; /* Notion blue */
+
+  --accent-color: #2383e2;
+  /* Notion blue */
   --accent-hover: #1b66b1;
   --accent-light: rgba(35, 131, 226, 0.08);
 
-  --success-color: #0f7b4e; /* Notion green */
+  --success-color: #0f7b4e;
+  /* Notion green */
   --success-light: rgba(15, 123, 78, 0.08);
-  --warning-color: #df9007; /* Notion yellow */
+  --warning-color: #df9007;
+  /* Notion yellow */
   --warning-light: rgba(223, 144, 7, 0.08);
-  --danger-color: #d44037; /* Notion red */
+  --danger-color: #d44037;
+  /* Notion red */
   --danger-light: rgba(212, 64, 55, 0.08);
 
   /* Layout Constants */
@@ -298,8 +302,19 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   transition: all var(--transition-fast);
   min-width: 240px;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.top-search-btn svg {
+  shape-rendering: geometricPrecision !important;
+  stroke-width: 2.2;
 }
 
 .top-search-btn:hover {
@@ -314,6 +329,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
 }
 
 .breadcrumbs {
@@ -464,8 +481,13 @@ h2.section-title {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Notion Callout Box */
@@ -971,7 +993,7 @@ select.form-input:disabled {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
 }
 
 .notion-modal-header {
@@ -1072,7 +1094,8 @@ select.form-input:disabled {
   display: block;
   text-align: center;
   padding: 8px 0;
-  overflow-x: auto;     /* scroll if formula is wider than container */
+  overflow-x: auto;
+  /* scroll if formula is wider than container */
 }
 
 /* Ensure KaTeX doesn't break the flashcard font colour on dark mode */
@@ -1469,18 +1492,54 @@ select.form-input:disabled {
     padding: 16px 16px calc(24px + env(safe-area-inset-bottom, 0px));
     gap: 20px;
   }
+
   .sidebar-menu-btn {
     display: flex !important;
   }
+
   h1.page-title {
     font-size: 1.65rem;
   }
+
   .page-emoji {
     font-size: 2.2rem;
   }
+
   .stats-row {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
 }
 
+/* Search Modal Text & SVG Picture Noise Fix */
+.search-modal-container,
+.search-modal-container input,
+.search-modal-container p,
+.search-modal-container div,
+.search-modal-container span {
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.search-modal-container svg {
+  shape-rendering: geometricPrecision !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.search-modal-container img {
+  image-rendering: -webkit-optimize-contrast !important;
+}
+
+/* Input Placeholder Noise & Antialiasing Fix */
+input::placeholder,
+textarea::placeholder,
+.notion-input::placeholder,
+::-webkit-input-placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
+}
