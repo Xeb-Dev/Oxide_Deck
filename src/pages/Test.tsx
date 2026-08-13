@@ -7,8 +7,8 @@ import {
 import {
   getSubjects, getTestsBySubject, getTestQuestions, createTest,
   updateTest, deleteTest, bulkCreateTestQuestions, deleteTestQuestions,
-  getSubjectTestTrend, saveTestAnalysis,
-  Subject, Test, TestQuestion, TestQuestionType, TestTrendPoint,
+  getSubjectTestTrend, saveTestAnalysis, getAllTestAnalyses, getTestAnalysisByTestId, getTestErrorsByTestId,
+  Subject, Test, TestQuestion, TestQuestionType, TestTrendPoint, TestAnalysis,
 } from "../services/db";
 import {
   scanTextForTestQuestions, scanPdfForTestQuestions, scanImageForTestQuestions,
@@ -60,6 +60,7 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   // AI Analysis Modal state
   const [analyzingTestId, setAnalyzingTestId] = useState<string | null>(null);
   const [analysisModalData, setAnalysisModalData] = useState<{ test: Test; result: FullTestAnalysisResult } | null>(null);
+  const [analyzedTestMap, setAnalyzedTestMap] = useState<Record<string, TestAnalysis>>({});
 
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [editSubjectId, setEditSubjectId] = useState<string>("");
@@ -94,11 +95,50 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
         bySub[s.id] = await getTestsBySubject(s.id);
       }
       setTestsBySubject(bySub);
+
+      const analyses = await getAllTestAnalyses();
+      const map: Record<string, TestAnalysis> = {};
+      for (const a of analyses) {
+        map[a.test_id] = a;
+      }
+      setAnalyzedTestMap(map);
     } catch (e) {
       console.error(e);
       setStatus({ message: "Failed to load tests.", variant: "error" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReviewTestAnalysis = async (targetTest: Test, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const analysis = await getTestAnalysisByTestId(targetTest.id);
+      if (!analysis) {
+        setStatus({ message: "No saved analysis found for this test.", variant: "warning" });
+        return;
+      }
+      const errors = await getTestErrorsByTestId(targetTest.id);
+      const analysisResult: FullTestAnalysisResult = {
+        summary: analysis.summary,
+        strengths: analysis.strengths || "",
+        weaknesses: analysis.weaknesses || "",
+        recommendations: analysis.recommendations || "",
+        calculatedScore: targetTest.score || 0,
+        maxScore: targetTest.max_score || 100,
+        errors: errors.map((err) => ({
+          questionId: err.question_id ?? undefined,
+          questionText: err.question_text,
+          userAnswer: err.user_answer ?? "",
+          correctAnswer: err.correct_answer ?? "",
+          errorReason: err.error_reason,
+          score: err.score ?? 0,
+        })),
+      };
+      setAnalysisModalData({ test: targetTest, result: analysisResult });
+    } catch (err: any) {
+      console.error(err);
+      setStatus({ message: "Failed to load test analysis.", variant: "error" });
     }
   };
 
@@ -614,7 +654,9 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
     return (
       <DetailView test={detailTest} questions={detailQuestions} subject={detailSubject}
         onBack={() => setView("list")} onEdit={() => startEditTest(detailTest)} onDelete={() => handleDeleteTest(detailTest)}
-        onAnalyse={() => handleAnalyseTestWithAI(detailTest)} analyzing={analyzingTestId === detailTest.id} />
+        onAnalyse={() => handleAnalyseTestWithAI(detailTest)} analyzing={analyzingTestId === detailTest.id}
+        hasAnalysis={!!analyzedTestMap[detailTest.id]}
+        onReviewAnalysis={() => handleReviewTestAnalysis(detailTest)} />
     );
   }
 
@@ -693,16 +735,28 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
                                   {pct != null && (
                                     <div className={`test-score-badge ${pct >= 80 ? "good" : pct >= 50 ? "ok" : "low"}`}>{pct}%</div>
                                   )}
-                                  <button
-                                    className="notion-btn secondary"
-                                    style={{ padding: "4px 10px", fontSize: "0.78rem" }}
-                                    onClick={(e) => handleAnalyseTestWithAI(t, e)}
-                                    disabled={isBeingAnalyzed}
-                                    title="Run AI diagnostic analysis and log errors to Scores tab"
-                                  >
-                                    {isBeingAnalyzed ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-                                    Analyse using AI
-                                  </button>
+                                  {analyzedTestMap[t.id] ? (
+                                    <button
+                                      className="notion-btn secondary"
+                                      style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                                      onClick={(e) => handleReviewTestAnalysis(t, e)}
+                                      title="Review saved AI analysis and error breakdown"
+                                    >
+                                      <Eye size={13} />
+                                      Review the analysis
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className="notion-btn secondary"
+                                      style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                                      onClick={(e) => handleAnalyseTestWithAI(t, e)}
+                                      disabled={isBeingAnalyzed}
+                                      title="Run AI diagnostic analysis and log errors to Scores tab"
+                                    >
+                                      {isBeingAnalyzed ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
+                                      Analyse using AI
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -863,20 +917,34 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", paddingTop: "12px", borderTop: "1px solid var(--border-color)" }}>
-              <button className="notion-btn secondary" onClick={() => setAnalysisModalData(null)} style={{ padding: "8px 16px" }}>
-                Close
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "12px", borderTop: "1px solid var(--border-color)" }}>
               <button
-                className="notion-btn primary"
-                onClick={() => {
+                className="notion-btn secondary"
+                onClick={(e) => {
+                  const t = analysisModalData.test;
                   setAnalysisModalData(null);
-                  _setCurrentNav({ page: "scores" });
+                  handleAnalyseTestWithAI(t, e);
                 }}
-                style={{ padding: "8px 16px" }}
+                style={{ padding: "8px 14px", fontSize: "0.85rem" }}
+                title="Re-run AI diagnostic analysis on this test"
               >
-                Go to Scores Tab
+                <Sparkles size={14} /> Re-analyze with AI
               </button>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button className="notion-btn secondary" onClick={() => setAnalysisModalData(null)} style={{ padding: "8px 16px" }}>
+                  Close
+                </button>
+                <button
+                  className="notion-btn primary"
+                  onClick={() => {
+                    setAnalysisModalData(null);
+                    _setCurrentNav({ page: "scores" });
+                  }}
+                  style={{ padding: "8px 16px" }}
+                >
+                  Go to Scores Tab
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1190,9 +1258,10 @@ interface DetailViewProps {
   test: Test; questions: TestQuestion[]; subject: Subject | null;
   onBack: () => void; onEdit: () => void; onDelete: () => void;
   onAnalyse: () => void; analyzing: boolean;
+  hasAnalysis?: boolean; onReviewAnalysis?: () => void;
 }
 
-function DetailView({ test, questions, subject, onBack, onEdit, onDelete, onAnalyse, analyzing }: DetailViewProps) {
+function DetailView({ test, questions, subject, onBack, onEdit, onDelete, onAnalyse, analyzing, hasAnalysis, onReviewAnalysis }: DetailViewProps) {
   const pct = test.max_score > 0 && test.score != null ? Math.round((test.score / test.max_score) * 100) : null;
 
   // Answer-entry + AI review state
@@ -1254,14 +1323,24 @@ function DetailView({ test, questions, subject, onBack, onEdit, onDelete, onAnal
         <h1 className="page-title" style={{ margin: 0, flex: 1 }}>{test.name}</h1>
         {!showReviewMode && (
           <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              className="notion-btn primary"
-              onClick={onAnalyse}
-              disabled={analyzing}
-            >
-              {analyzing ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
-              Analyse using AI
-            </button>
+            {hasAnalysis ? (
+              <button
+                className="notion-btn secondary"
+                onClick={onReviewAnalysis}
+                title="Review saved AI analysis and error breakdown"
+              >
+                <Eye size={14} /> Review the analysis
+              </button>
+            ) : (
+              <button
+                className="notion-btn primary"
+                onClick={onAnalyse}
+                disabled={analyzing}
+              >
+                {analyzing ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={14} />}
+                Analyse using AI
+              </button>
+            )}
             <button className="notion-btn secondary" onClick={onEdit}><Edit3 size={14} /> Edit</button>
             <button className="notion-btn danger" onClick={onDelete}><Trash2 size={14} /> Delete</button>
           </div>

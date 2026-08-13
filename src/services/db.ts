@@ -748,6 +748,19 @@ export async function getTestAnalysisByTestId(testId: string): Promise<TestAnaly
   return rows.length > 0 ? rows[0] : null;
 }
 
+export async function getAllTestAnalyses(): Promise<TestAnalysis[]> {
+  const db = await getDB();
+  return await db.select<TestAnalysis[]>("SELECT * FROM test_analyses");
+}
+
+export async function getTestErrorsByTestId(testId: string): Promise<TestError[]> {
+  const db = await getDB();
+  return await db.select<TestError[]>(
+    "SELECT * FROM test_errors WHERE test_id = $1 ORDER BY datetime(created_at) DESC",
+    [testId]
+  );
+}
+
 export interface GlobalSearchResult {
   flashcards: {
     id: string;
@@ -773,15 +786,35 @@ export interface GlobalSearchResult {
     max_score: number;
     test_date: string | null;
   }[];
+  studyFocusPoints: {
+    id: string;
+    test_id: string;
+    test_name: string;
+    subject_name: string;
+    question_text: string;
+    user_answer: string | null;
+    correct_answer: string | null;
+    error_reason: string;
+  }[];
+  aiInsights: {
+    id: string;
+    test_id: string;
+    test_name: string;
+    subject_name: string;
+    summary: string;
+    strengths: string | null;
+    weaknesses: string | null;
+    recommendations: string | null;
+  }[];
 }
 
 /**
- * Global Unified Search engine across flashcards, folders, decks, subjects, and tests using FTS5 Trigram indexing.
+ * Global Unified Search engine across flashcards, folders, decks, subjects, tests, study focus points, and AI insights.
  */
 export async function searchGlobal(rawQuery: string): Promise<GlobalSearchResult> {
   const query = rawQuery.trim();
   if (!query) {
-    return { flashcards: [], foldersAndDecks: [], tests: [] };
+    return { flashcards: [], foldersAndDecks: [], tests: [], studyFocusPoints: [], aiInsights: [] };
   }
 
   const db = await getDB();
@@ -838,9 +871,53 @@ export async function searchGlobal(rawQuery: string): Promise<GlobalSearchResult
     [searchPattern]
   );
 
+  // 4. Search Study Focus Points (test_errors)
+  const matchedFocusPoints = await db.select<{
+    id: string;
+    test_id: string;
+    test_name: string;
+    subject_name: string;
+    question_text: string;
+    user_answer: string | null;
+    correct_answer: string | null;
+    error_reason: string;
+  }[]>(
+    `SELECT e.id, e.test_id, COALESCE(t.name, 'Test') as test_name, COALESCE(s.name, 'Subject') as subject_name,
+            e.question_text, e.user_answer, e.correct_answer, e.error_reason
+     FROM test_errors e
+     LEFT JOIN tests t ON e.test_id = t.id
+     LEFT JOIN subjects s ON e.subject_id = s.id
+     WHERE e.question_text LIKE $1 OR e.user_answer LIKE $1 OR e.correct_answer LIKE $1 OR e.error_reason LIKE $1
+     LIMIT 5`,
+    [searchPattern]
+  );
+
+  // 5. Search AI Insights (test_analyses)
+  const matchedInsights = await db.select<{
+    id: string;
+    test_id: string;
+    test_name: string;
+    subject_name: string;
+    summary: string;
+    strengths: string | null;
+    weaknesses: string | null;
+    recommendations: string | null;
+  }[]>(
+    `SELECT a.id, a.test_id, COALESCE(t.name, 'Test') as test_name, COALESCE(s.name, 'Subject') as subject_name,
+            a.summary, a.strengths, a.weaknesses, a.recommendations
+     FROM test_analyses a
+     LEFT JOIN tests t ON a.test_id = t.id
+     LEFT JOIN subjects s ON a.subject_id = s.id
+     WHERE a.summary LIKE $1 OR a.strengths LIKE $1 OR a.weaknesses LIKE $1 OR a.recommendations LIKE $1
+     LIMIT 5`,
+    [searchPattern]
+  );
+
   return {
     flashcards: flashcardRows,
     foldersAndDecks,
     tests: matchedTests,
+    studyFocusPoints: matchedFocusPoints,
+    aiInsights: matchedInsights,
   };
 }

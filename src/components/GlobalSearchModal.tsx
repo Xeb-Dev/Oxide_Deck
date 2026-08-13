@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, X, Folder, BookOpen, FileText, ChevronRight, AlertCircle } from "lucide-react";
+import { Search, X, Folder, BookOpen, FileText, ChevronRight, AlertCircle, Target, Sparkles } from "lucide-react";
 import { searchGlobal, GlobalSearchResult } from "../services/db";
 import MathText from "./MathText";
 
@@ -45,7 +45,11 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
   if (!isOpen) return null;
 
   const totalResults = results
-    ? results.flashcards.length + results.foldersAndDecks.length + results.tests.length
+    ? results.flashcards.length +
+      results.foldersAndDecks.length +
+      results.tests.length +
+      results.studyFocusPoints.length +
+      results.aiInsights.length
     : 0;
 
   const handleSelectDeck = (deckId: string) => {
@@ -60,6 +64,11 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
 
   const handleSelectTest = () => {
     onNavigate({ page: 'tests' });
+    onClose();
+  };
+
+  const handleSelectScores = () => {
+    onNavigate({ page: 'scores' });
     onClose();
   };
 
@@ -290,6 +299,88 @@ export default function GlobalSearchModal({ isOpen, onClose, onNavigate }: Globa
                           )}
                         </div>
                         <ChevronRight size={16} style={{ color: "var(--text-muted)" }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Study Focus Points Section */}
+              {results.studyFocusPoints.length > 0 && (
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Target size={14} style={{ color: "#8b5cf6" }} /> Study Focus Points ({results.studyFocusPoints.length})
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {results.studyFocusPoints.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={handleSelectScores}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          backgroundColor: "var(--bg-secondary, #f9fafb)",
+                          border: "1px solid var(--border-color, #e5e7eb)",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#8b5cf6" }}>
+                            🎯 {item.subject_name} · {item.test_name}
+                          </span>
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
+                          <MathText>{item.question_text}</MathText>
+                        </div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          💡 <MathText>{item.error_reason}</MathText>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Insights Section */}
+              {results.aiInsights.length > 0 && (
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Sparkles size={14} style={{ color: "var(--accent-color)" }} /> AI Diagnostic Insights ({results.aiInsights.length})
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {results.aiInsights.map((insight) => (
+                      <div
+                        key={insight.id}
+                        onClick={handleSelectScores}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                          padding: "10px 12px",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          backgroundColor: "var(--bg-secondary, #f9fafb)",
+                          border: "1px solid var(--border-color, #e5e7eb)",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--accent-color)" }}>
+                            ✨ {insight.subject_name} · {insight.test_name}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "0.85rem", color: "var(--text-primary)", fontWeight: 500, lineHeight: 1.4 }}>
+                          {insight.summary}
+                        </div>
+                        {insight.recommendations && (
+                          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            Focus: {insight.recommendations}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
