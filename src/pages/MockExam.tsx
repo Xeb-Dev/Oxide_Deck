@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   getSubjects, getDecks, getFolders, getTestsBySubject, getTestQuestions,
   getFlashcards, saveTestAnalysis, addRevisionHistory,
@@ -29,10 +29,35 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(currentNav.subjectId || "");
   const [selectedDeckId, setSelectedDeckId] = useState<string>(currentNav.deckId || "");
-  const [subjectTests, setSubjectTests] = useState<Test[]>([]);
-  const [selectedPastTestId, setSelectedPastTestId] = useState<string>("");
+
+  // Compute folder and deck sets filtered by selectedSubjectId
+  const subjectFolderIds = useMemo(() => {
+    if (!selectedSubjectId) return new Set<string>();
+    const map = new Map<string, string | null>();
+    folders.forEach((f) => {
+      if (f.subject_id) map.set(f.id, f.subject_id);
+    });
+    let changed = true;
+    while (changed) {
+      changed = false;
+      folders.forEach((f) => {
+        if (!map.has(f.id) && f.parent_folder_id && map.has(f.parent_folder_id)) {
+          map.set(f.id, map.get(f.parent_folder_id)!);
+          changed = true;
+        }
+      });
+    }
+    return new Set(folders.filter((f) => map.get(f.id) === selectedSubjectId).map((f) => f.id));
+  }, [selectedSubjectId, folders]);
+
+  const subjectDecks = useMemo(() => {
+    if (!selectedSubjectId) return [];
+    return decks.filter((d) => d.folder_id && subjectFolderIds.has(d.folder_id));
+  }, [selectedSubjectId, decks, subjectFolderIds]);
 
   const [mockOption, setMockOption] = useState<'retake' | 'variation' | 'flashcard_mimic'>('retake');
+  const [subjectTests, setSubjectTests] = useState<Test[]>([]);
+  const [selectedPastTestId, setSelectedPastTestId] = useState<string>("");
   const [topicFocus, setTopicFocus] = useState<string>("");
   const [timerMinutes, setTimerMinutes] = useState<number>(60);
 
@@ -91,6 +116,7 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
   // Handle subject change
   const handleSubjectChange = async (subId: string) => {
     setSelectedSubjectId(subId);
+    setSelectedDeckId("");
     try {
       const tests = await getTestsBySubject(subId);
       setSubjectTests(tests);
@@ -306,42 +332,23 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
 
           <div className="divider" />
 
-          {/* Subject & Deck Selection */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <label className="form-label">
-              Subject:
-              <select
-                className="notion-input"
-                value={selectedSubjectId}
-                onChange={(e) => handleSubjectChange(e.target.value)}
-                style={{ marginTop: "6px", width: "100%" }}
-              >
-                <option value="">Select a subject...</option>
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.icon || "📚"} {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="form-label">
-              Deck (Optional for Flashcard AI Mock):
-              <select
-                className="notion-input"
-                value={selectedDeckId}
-                onChange={(e) => setSelectedDeckId(e.target.value)}
-                style={{ marginTop: "6px", width: "100%" }}
-              >
-                <option value="">All Decks in Subject</option>
-                {decks.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.icon || "🎴"} {d.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {/* Subject Selection */}
+          <label className="form-label">
+            Subject:
+            <select
+              className="notion-input"
+              value={selectedSubjectId}
+              onChange={(e) => handleSubjectChange(e.target.value)}
+              style={{ marginTop: "6px", width: "100%" }}
+            >
+              <option value="">Select a subject...</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.icon || "📚"} {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {/* Mode Option Cards */}
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -409,6 +416,26 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
             </div>
           </div>
 
+          {/* Optional Deck Selection (Only for Flashcard AI Mock) */}
+          {mockOption === 'flashcard_mimic' && (
+            <label className="form-label">
+              Deck (Optional for Flashcard AI Mock):
+              <select
+                className="notion-input"
+                value={selectedDeckId}
+                onChange={(e) => setSelectedDeckId(e.target.value)}
+                style={{ marginTop: "6px", width: "100%" }}
+              >
+                <option value="">All Decks in Subject ({subjectDecks.length})</option>
+                {subjectDecks.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.icon || "🎴"} {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           {/* Select past test dropdown if retake or variation */}
           {(mockOption === 'retake' || mockOption === 'variation') && (
             <label className="form-label">
@@ -438,18 +465,20 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
             </label>
           )}
 
-          {/* Topic Focus Input */}
-          <label className="form-label">
-            Topic / Concept Focus (Optional):
-            <input
-              className="form-input"
-              type="text"
-              value={topicFocus}
-              onChange={(e) => setTopicFocus(e.target.value)}
-              placeholder="e.g. Linear Algebra, Thermodynamics, Cell Biology..."
-              style={{ marginTop: "6px" }}
-            />
-          </label>
+          {/* Topic Focus Input (Only for Flashcard AI Mock) */}
+          {mockOption === 'flashcard_mimic' && (
+            <label className="form-label">
+              Topic / Concept Focus (Optional):
+              <input
+                className="form-input"
+                type="text"
+                value={topicFocus}
+                onChange={(e) => setTopicFocus(e.target.value)}
+                placeholder="e.g. Linear Algebra, Thermodynamics, Cell Biology..."
+                style={{ marginTop: "6px" }}
+              />
+            </label>
+          )}
 
           {/* Timer Minutes Input */}
           <label className="form-label">
