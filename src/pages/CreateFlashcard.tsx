@@ -25,7 +25,7 @@ import {
 } from "../services/pdf";
 
 import { 
-  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap, Image as ImageIcon, Loader2
+  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap, Image as ImageIcon, ImagePlus, Loader2
 } from "lucide-react";
 
 import EmojiPicker from "../components/EmojiPicker";
@@ -1194,7 +1194,22 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
             <div className="notion-input-group">
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span>Front (Term / Question)</span>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image here for Front</span>
+                <span className="desktop-drop-hint" style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>
+                  📷 Drop / Paste Image here for Front
+                </span>
+                <label className="phone-add-picture-btn">
+                  <ImagePlus size={13} /> Add Picture
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) processImageFile(f, 'front');
+                      e.target.value = '';
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
               </label>
               <textarea 
                 className="notion-input" 
@@ -1231,7 +1246,22 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
             <div className="notion-input-group">
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span>Back (Definition / Answer)</span>
-                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image here for Back</span>
+                <span className="desktop-drop-hint" style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: "normal" }}>
+                  📷 Drop / Paste Image here for Back
+                </span>
+                <label className="phone-add-picture-btn">
+                  <ImagePlus size={13} /> Add Picture
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) processImageFile(f, 'back');
+                      e.target.value = '';
+                    }}
+                    style={{ display: "none" }}
+                  />
+                </label>
               </label>
               <textarea 
                 className="notion-input" 

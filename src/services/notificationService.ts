@@ -182,6 +182,7 @@ async function getTauriNotificationPlugin(): Promise<any | null> {
  */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === "undefined") return false;
+  if (window.location && window.location.protocol === "about:") return false;
 
   // 1. Try native Tauri OS notification plugin first (Android / Desktop native permission dialog)
   try {

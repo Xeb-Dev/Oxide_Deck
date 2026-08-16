@@ -2194,4 +2194,43 @@ textarea::placeholder,
     transform: translateY(0) scale(1);
   }
 }
+
+/* ==========================================================================
+   PHONE-ONLY "ADD PICTURE" BUTTONS (HIDDEN FOR WINDOWS/DESKTOP USERS)
+   ========================================================================== */
+.phone-add-picture-btn {
+  display: none !important;
+}
+
+.desktop-drop-hint {
+  display: inline;
+}
+
+@media (max-width: 768px) {
+  .phone-add-picture-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.74rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background-color: var(--accent-light);
+    color: var(--accent-color);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 40%, transparent);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: all var(--transition-fast);
+  }
+
+  .phone-add-picture-btn:active {
+    opacity: 0.75;
+    transform: scale(0.98);
+  }
+
+  .desktop-drop-hint {
+    display: none !important;
+  }
+}
+
 

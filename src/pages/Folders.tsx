@@ -8,7 +8,7 @@ import {
 } from "../services/db";
 import { stateLabel } from "../services/fsrs";
 import {
-  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload, QrCode
+  Plus, Trash2, Edit3, Sparkles, BookOpen, ChevronRight, FileText, X, Download, Upload, QrCode, ImagePlus
 } from "lucide-react";
 import MathText from "../components/MathText";
 import EmojiPicker from "../components/EmojiPicker";
@@ -715,9 +715,24 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
               <form onSubmit={handleCreateCard}>
                 <div className="notion-modal-content">
                   <div className="notion-input-group">
-                    <label style={{ display: "flex", justifyContent: "space-between" }}>
+                    <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>Front (Question / Concept)</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Front</span>
+                      <span className="desktop-drop-hint" style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>
+                        📷 Drop / Paste Image for Front
+                      </span>
+                      <label className="phone-add-picture-btn">
+                        <ImagePlus size={13} /> Add Picture
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) processCardModalImage(f, 'front');
+                            e.target.value = '';
+                          }}
+                          style={{ display: "none" }}
+                        />
+                      </label>
                     </label>
                     <textarea
                       className="notion-input"
@@ -743,9 +758,24 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     )}
                   </div>
                   <div className="notion-input-group">
-                    <label style={{ display: "flex", justifyContent: "space-between" }}>
+                    <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>Back (Answer / Definition)</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>📷 Drop / Paste Image for Back</span>
+                      <span className="desktop-drop-hint" style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: "normal" }}>
+                        📷 Drop / Paste Image for Back
+                      </span>
+                      <label className="phone-add-picture-btn">
+                        <ImagePlus size={13} /> Add Picture
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) processCardModalImage(f, 'back');
+                            e.target.value = '';
+                          }}
+                          style={{ display: "none" }}
+                        />
+                      </label>
                     </label>
                     <textarea
                       className="notion-input"

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Plus, Trash2, Edit3, Loader2, Sparkles, Image as ImageIcon,
+  Plus, Trash2, Edit3, Loader2, Sparkles, Image as ImageIcon, ImagePlus,
   Type, FileUp, ClipboardList, ChevronLeft, BarChart3, Eye,
   CheckCircle2, XCircle, MessageSquare, X, Clock,
 } from "lucide-react";
@@ -1104,9 +1104,12 @@ function EditView(props: EditViewProps) {
                 >
                   <ImageIcon size={28} style={{ color: "var(--text-muted)" }} />
                   <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.9rem" }}>
-                    Drag & drop images here
+                    <span className="desktop-drop-hint">Drag & drop images here</span>
+                    <span className="phone-add-picture-btn" style={{ fontSize: "0.85rem", padding: "6px 14px", gap: "6px" }}>
+                      <ImagePlus size={15} /> Add Pictures
+                    </span>
                   </div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                  <div className="desktop-drop-hint" style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
                     or click to browse · multiple images supported
                   </div>
                   <input
