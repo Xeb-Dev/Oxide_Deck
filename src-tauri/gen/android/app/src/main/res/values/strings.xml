@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">"oxide_deck"</string>
     <string name="main_activity_title">"oxide_deck"</string>
+    <string name="widget_name">"Daily Study Streak"</string>
+    <string name="widget_description">"Displays your active study streak, daily goal progress, and due flashcards."</string>
 </resources>

@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { cardFromRow, rowFromCard, getFSRS, loadParameters, saveParameters, DEFAULT_W, ratingToScore, type Grade } from "./fsrs";
 import type { Rating } from "./fsrs";
+import { syncNativeWidget } from "./widgetService";
 
 export interface Subject {
   id: string;
@@ -314,6 +315,10 @@ export async function addRevisionHistory(flashcardId: string | null, type: 'flas
     "INSERT INTO revision_history (id, flashcard_id, type, score, reviewed_at, rating) VALUES ($1, $2, $3, $4, $5, $6)",
     [id, flashcardId, type, score, now, rating]
   );
+  // Asynchronously trigger stats recalculation and native widget synchronization
+  setTimeout(() => {
+    getStats().catch(() => {});
+  }, 50);
 }
 
 export interface Stats {
@@ -445,6 +450,19 @@ export async function getStats(): Promise<Stats> {
       break;
     }
   }
+
+  const dueRes = await db.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM flashcards WHERE datetime(next_review) <= datetime('now')"
+  );
+  const dueCardsCount = dueRes[0]?.count || 0;
+
+  syncNativeWidget({
+    streakDays,
+    progressToday: streakProgressToday,
+    targetToday: streakMinCards,
+    conditionMet: streakConditionMetToday,
+    dueCardsCount,
+  }).catch(() => {});
 
   return {
     totalReviews,
