@@ -1,5 +1,5 @@
-import { Bell, Clock, Flame, Moon, Send, Volume2, ShieldCheck } from "lucide-react";
-import { NotificationSettings as NotifSettingsType, DAY_KEYS, DAY_LABELS } from "../../../services/notificationService";
+import { Bell, Clock, Flame, Moon, Send, Volume2, ShieldCheck, Target } from "lucide-react";
+import { NotificationSettings as NotifSettingsType, DAY_KEYS, DAY_LABELS, StreakConditionPreset } from "../../../services/notificationService";
 import SettingCard from "../components/SettingCard";
 import SettingRow from "../components/SettingRow";
 
@@ -14,6 +14,18 @@ export default function NotificationSettings({
   onChange,
   onSendTestNotification
 }: NotificationSettingsProps) {
+  const currentPreset = settings.streakConditionPreset || 'casual';
+
+  const handlePresetSelect = (preset: StreakConditionPreset) => {
+    let minCards = settings.streakMinCards;
+    if (preset === 'casual') minCards = 1;
+    if (preset === 'balanced') minCards = 5;
+    if (preset === 'serious') minCards = 15;
+
+    onChange("streakConditionPreset", preset);
+    onChange("streakMinCards", minCards);
+  };
+
   return (
     <div className="settings-section-container">
       {/* Master Switch Card */}
@@ -111,6 +123,79 @@ export default function NotificationSettings({
                 Daily reminders are currently paused. Toggle on above to customize your weekly timetable.
               </div>
             )}
+          </SettingCard>
+
+          {/* Daily Streak Continuation Goal Card */}
+          <SettingCard
+            title="Streak Continuation Goal"
+            description="Choose the conditions required to count a study day and keep your streak alive."
+            icon={<Target size={20} style={{ color: "var(--accent-color)" }} />}
+          >
+            <SettingRow
+              label="Goal Intensity Preset"
+              description="Quick presets for daily study goals"
+              vertical
+            >
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", width: "100%", marginTop: "2px" }}>
+                {[
+                  { id: 'casual' as const, label: 'Casual (1+ card)', count: 1 },
+                  { id: 'balanced' as const, label: 'Balanced (5+ cards)', count: 5 },
+                  { id: 'serious' as const, label: 'Serious (15+ cards)', count: 15 },
+                  { id: 'custom' as const, label: 'Custom Goal', count: settings.streakMinCards || 10 },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handlePresetSelect(p.id)}
+                    className={`streak-day-pill ${currentPreset === p.id ? 'streak-day-pill-active' : 'streak-day-pill-rest'}`}
+                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="Minimum Cards Reviewed Per Day"
+              description="Cards required to satisfy today's streak requirement"
+            >
+              <input
+                type="number"
+                min={1}
+                max={200}
+                className="notion-input"
+                style={{ width: "80px", padding: "4px 8px" }}
+                value={settings.streakMinCards || 1}
+                onChange={(e) => {
+                  const val = Math.max(1, parseInt(e.target.value) || 1);
+                  onChange("streakMinCards", val);
+                  onChange("streakConditionPreset", "custom");
+                }}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="Count AI Quizzes & Practice Tests"
+              description="Completing 1 full quiz or test exam session automatically satisfies the daily streak"
+            >
+              <input
+                type="checkbox"
+                checked={settings.streakAllowQuizzes ?? true}
+                onChange={(e) => onChange("streakAllowQuizzes", e.target.checked)}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label="Count Teach Mode Tutor Sessions"
+              description="Completing a conversation with a teaching persona satisfies the daily streak"
+            >
+              <input
+                type="checkbox"
+                checked={settings.streakAllowTeachMode ?? true}
+                onChange={(e) => onChange("streakAllowTeachMode", e.target.checked)}
+              />
+            </SettingRow>
           </SettingCard>
 
           {/* Active Streak Days / Rest Days Card */}

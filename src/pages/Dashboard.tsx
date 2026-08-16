@@ -89,6 +89,13 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
               <Flame size={16} color="var(--warning-color)" />
             </div>
             <div className="stat-card-value">{stats.streakDays} days</div>
+            {stats.streakTargetToday > 1 && (
+              <div style={{ fontSize: "0.72rem", color: stats.streakConditionMetToday ? "var(--success-color)" : "var(--text-secondary)", marginTop: "4px", fontWeight: 500 }}>
+                {stats.streakConditionMetToday
+                  ? "✓ Today's goal met"
+                  : `${stats.streakProgressToday}/${stats.streakTargetToday} cards today`}
+              </div>
+            )}
           </div>
           <div className="stat-card-value-box stat-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

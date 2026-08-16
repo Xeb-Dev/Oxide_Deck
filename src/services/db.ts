@@ -321,6 +321,9 @@ export interface Stats {
   averageScore: number;
   cardsReviewedToday: number;
   streakDays: number;
+  streakTargetToday: number;
+  streakProgressToday: number;
+  streakConditionMetToday: boolean;
   weeklyProgress: { day: string; count: number; avg_score: number }[];
 }
 
@@ -354,17 +357,24 @@ export async function getStats(): Promise<Stats> {
     });
   }
 
-  // Load notification settings to check streakActiveDays
+  // Load notification settings to check streakActiveDays and streak conditions
   let streakActiveDays: Record<string, boolean> = {
     mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true
   };
+  let streakMinCards = 1;
+  let streakAllowQuizzes = true;
+  let streakAllowTeachMode = true;
+
   try {
     const raw = localStorage.getItem("oxide_deck_notification_settings");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.streakActiveDays) {
-        streakActiveDays = parsed.streakActiveDays;
+      if (parsed.streakActiveDays) streakActiveDays = parsed.streakActiveDays;
+      if (typeof parsed.streakMinCards === 'number' && parsed.streakMinCards >= 1) {
+        streakMinCards = parsed.streakMinCards;
       }
+      if (typeof parsed.streakAllowQuizzes === 'boolean') streakAllowQuizzes = parsed.streakAllowQuizzes;
+      if (typeof parsed.streakAllowTeachMode === 'boolean') streakAllowTeachMode = parsed.streakAllowTeachMode;
     }
   } catch {
     // fallback defaults
@@ -374,10 +384,13 @@ export async function getStats(): Promise<Stats> {
     0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat'
   };
 
-  // Calculate streak based on daily activities and active streak days
+  // Calculate streak based on daily activities, minimum conditions, and active streak days
   let streakDays = 0;
   let checkDayOffset = 0;
   const MAX_CHECK_DAYS = 365;
+
+  let streakProgressToday = 0;
+  let streakConditionMetToday = false;
 
   while (checkDayOffset < MAX_CHECK_DAYS) {
     const targetDate = new Date();
@@ -385,17 +398,38 @@ export async function getStats(): Promise<Stats> {
     const dayKey = DAY_INDEX_MAP[targetDate.getDay()];
     const isRequiredDay = streakActiveDays[dayKey] ?? true;
 
-    const activeRes = await db.select<{ count: number }[]>(
-      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days')`
+    // Fetch card and quiz activities for this day
+    const flashcardRes = await db.select<{ count: number }[]>(
+      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND (type = 'flashcard' OR type IS NULL)`
     );
-    const hasReviewed = (activeRes[0]?.count || 0) > 0;
+    const flashcardCount = flashcardRes[0]?.count || 0;
 
-    if (hasReviewed) {
+    const quizRes = await db.select<{ count: number }[]>(
+      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND (type = 'quiz' OR type = 'mock')`
+    );
+    const quizCount = quizRes[0]?.count || 0;
+
+    const teachRes = await db.select<{ count: number }[]>(
+      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND type = 'teach'`
+    );
+    const teachCount = teachRes[0]?.count || 0;
+
+    const hasMetCards = flashcardCount >= streakMinCards;
+    const hasMetQuiz = streakAllowQuizzes && quizCount > 0;
+    const hasMetTeach = streakAllowTeachMode && teachCount > 0;
+    const isCompleted = hasMetCards || hasMetQuiz || hasMetTeach;
+
+    if (checkDayOffset === 0) {
+      streakProgressToday = flashcardCount + (hasMetQuiz || hasMetTeach ? streakMinCards : 0);
+      streakConditionMetToday = isCompleted;
+    }
+
+    if (isCompleted) {
       streakDays++;
       checkDayOffset++;
     } else {
-      // If user did NOT review on this day:
-      // 1. Today (offset 0) has 0 reviews yet -> allow checking yesterday without breaking streak
+      // If user did NOT meet streak condition on this day:
+      // 1. Today (offset 0) has not met goal yet -> allow checking yesterday without breaking streak yet
       if (checkDayOffset === 0) {
         checkDayOffset++;
         continue;
@@ -407,7 +441,7 @@ export async function getStats(): Promise<Stats> {
         continue;
       }
 
-      // 3. Required study day with 0 reviews -> streak breaks!
+      // 3. Required study day with condition unmet -> streak breaks!
       break;
     }
   }
@@ -417,6 +451,9 @@ export async function getStats(): Promise<Stats> {
     averageScore,
     cardsReviewedToday,
     streakDays,
+    streakTargetToday: streakMinCards,
+    streakProgressToday,
+    streakConditionMetToday,
     weeklyProgress,
   };
 }

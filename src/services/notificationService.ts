@@ -8,11 +8,17 @@ export interface DaySchedule {
 export type WeeklyReminderSchedule = Record<DayOfWeek, DaySchedule>;
 export type WeeklyStreakSchedule = Record<DayOfWeek, boolean>;
 
+export type StreakConditionPreset = 'casual' | 'balanced' | 'serious' | 'custom';
+
 export interface NotificationSettings {
   masterEnabled: boolean;
   dailyReminderEnabled: boolean;
   weeklySchedule: WeeklyReminderSchedule;
   streakActiveDays: WeeklyStreakSchedule;
+  streakConditionPreset: StreakConditionPreset;
+  streakMinCards: number; // e.g. 1 (casual), 5 (balanced), 15 (serious), or custom number
+  streakAllowQuizzes: boolean; // default true
+  streakAllowTeachMode: boolean; // default true
   dueCardsThresholdEnabled: boolean;
   dueCardsThresholdCount: number; // e.g. 10
   streakSaverEnabled: boolean;
@@ -68,6 +74,10 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     sat: true, // Default to true, customizable by user
     sun: true,
   },
+  streakConditionPreset: 'casual',
+  streakMinCards: 1,
+  streakAllowQuizzes: true,
+  streakAllowTeachMode: true,
   dueCardsThresholdEnabled: true,
   dueCardsThresholdCount: 10,
   streakSaverEnabled: true,
@@ -342,16 +352,22 @@ export async function checkAndTriggerStudyReminders(
   }
 
   // 3. Streak Saver / Evening Alert (only on required streak study days)
+  const targetCards = settings.streakMinCards || 1;
   if (
     settings.streakSaverEnabled &&
     settings.streakActiveDays[todayDayKey] &&
     currentHHMM >= settings.streakSaverTime &&
     lastNotified.streakSaver !== todayStr &&
-    todayReviewedCount === 0
+    todayReviewedCount < targetCards
   ) {
+    const remaining = targetCards - todayReviewedCount;
+    const msg = remaining > 1
+      ? `You have reviewed ${todayReviewedCount}/${targetCards} cards today. Review ${remaining} more before midnight to keep your streak!`
+      : `You haven't completed your daily study goal today. Complete a quick review session before midnight to keep your streak!`;
+
     const sent = await triggerNotification(
       "🔥 Don't Break Your Streak!",
-      `You haven't studied yet today. Complete a quick review session before midnight!`,
+      msg,
       "warning"
     );
     if (sent) {
