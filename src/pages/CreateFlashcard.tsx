@@ -557,7 +557,7 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
       setLoading(true);
       showStatus("AI Vision is analyzing PDF pages to extract your requested diagram...", "info");
 
-      const card = await extractDiagramFromPdfWithAI(pdfFileData.buffer, pdfDiagramPrompt.trim(), pdfExtraction);
+      const card = await extractDiagramFromPdfWithAI(pdfFileData.buffer as ArrayBuffer, pdfDiagramPrompt.trim(), pdfExtraction);
 
       setPdfSourceCards((prev) => [...prev, card]);
       setExtractedCards((prev) => {

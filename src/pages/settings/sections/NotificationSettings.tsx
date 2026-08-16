@@ -1,0 +1,269 @@
+import { Bell, Clock, Flame, Moon, Send, Volume2, ShieldCheck } from "lucide-react";
+import { NotificationSettings as NotifSettingsType, DAY_KEYS, DAY_LABELS } from "../../../services/notificationService";
+import SettingCard from "../components/SettingCard";
+import SettingRow from "../components/SettingRow";
+
+interface NotificationSettingsProps {
+  settings: NotifSettingsType;
+  onChange: <K extends keyof NotifSettingsType>(key: K, value: NotifSettingsType[K]) => void;
+  onSendTestNotification: () => void;
+}
+
+export default function NotificationSettings({
+  settings,
+  onChange,
+  onSendTestNotification
+}: NotificationSettingsProps) {
+  return (
+    <div className="settings-section-container">
+      {/* Master Switch Card */}
+      <SettingCard
+        title="Notification System"
+        description="Master control for desktop popups, reminders, and study alerts."
+        icon={<Bell size={20} />}
+        headerAction={
+          <button
+            type="button"
+            className="notion-btn secondary"
+            onClick={onSendTestNotification}
+            style={{ fontSize: "0.82rem", gap: "6px" }}
+          >
+            <Send size={14} /> Send Test Alert
+          </button>
+        }
+      >
+        <SettingRow
+          label="Enable All Notifications"
+          description="Allow system notifications and background alerts for spaced repetition"
+        >
+          <input
+            type="checkbox"
+            checked={settings.masterEnabled}
+            onChange={(e) => onChange("masterEnabled", e.target.checked)}
+            style={{ transform: "scale(1.15)", cursor: "pointer" }}
+          />
+        </SettingRow>
+      </SettingCard>
+
+      {settings.masterEnabled && (
+        <>
+          {/* Daily Schedule Card */}
+          <SettingCard
+            title="Daily Study Reminders"
+            description="Set custom reminder times for each day of the week to maintain your study routine."
+            icon={<Clock size={20} />}
+            headerAction={
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={settings.dailyReminderEnabled}
+                  onChange={(e) => onChange("dailyReminderEnabled", e.target.checked)}
+                />
+                Active
+              </label>
+            }
+          >
+            {settings.dailyReminderEnabled ? (
+              <div className="weekly-schedule-grid">
+                {DAY_KEYS.map((dayKey) => {
+                  const dayLabel = DAY_LABELS[dayKey];
+                  const schedule = settings.weeklySchedule[dayKey] || { enabled: true, time: "20:30" };
+
+                  return (
+                    <div
+                      key={dayKey}
+                      className={`day-schedule-card ${schedule.enabled ? 'day-schedule-active' : 'day-schedule-disabled'}`}
+                    >
+                      <label className="day-schedule-header">
+                        <input
+                          type="checkbox"
+                          checked={schedule.enabled}
+                          onChange={(e) => {
+                            const updatedSchedule = {
+                              ...settings.weeklySchedule,
+                              [dayKey]: { ...schedule, enabled: e.target.checked }
+                            };
+                            onChange("weeklySchedule", updatedSchedule);
+                          }}
+                        />
+                        <span className="day-name">{dayLabel.full}</span>
+                      </label>
+                      <input
+                        type="time"
+                        className="notion-input"
+                        style={{ fontSize: "0.82rem", padding: "4px 6px", width: "100%" }}
+                        value={schedule.time}
+                        disabled={!schedule.enabled}
+                        onChange={(e) => {
+                          const updatedSchedule = {
+                            ...settings.weeklySchedule,
+                            [dayKey]: { ...schedule, time: e.target.value }
+                          };
+                          onChange("weeklySchedule", updatedSchedule);
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                Daily reminders are currently paused. Toggle on above to customize your weekly timetable.
+              </div>
+            )}
+          </SettingCard>
+
+          {/* Active Streak Days / Rest Days Card */}
+          <SettingCard
+            title="Streak Active & Rest Days"
+            description="Select which days count towards your study streak. Days marked as Rest Days will never break your streak if you take time off."
+            icon={<Flame size={20} style={{ color: "#f59e0b" }} />}
+          >
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", paddingTop: "4px" }}>
+              {DAY_KEYS.map((dayKey) => {
+                const isRequired = settings.streakActiveDays[dayKey] ?? true;
+                const dayInfo = DAY_LABELS[dayKey];
+
+                return (
+                  <button
+                    key={dayKey}
+                    type="button"
+                    onClick={() => {
+                      const updatedDays = {
+                        ...settings.streakActiveDays,
+                        [dayKey]: !isRequired
+                      };
+                      onChange("streakActiveDays", updatedDays);
+                    }}
+                    className={`streak-day-pill ${isRequired ? 'streak-day-pill-active' : 'streak-day-pill-rest'}`}
+                  >
+                    <span>{dayInfo.full.slice(0, 3)}</span>
+                    <span className="pill-badge">{isRequired ? "Study" : "Rest"}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </SettingCard>
+
+          {/* Threshold & Streak Saver Alerts Card */}
+          <SettingCard
+            title="Smart Alerts & Nudges"
+            description="Automated threshold warnings to prevent backlog accumulation and keep streaks alive."
+            icon={<ShieldCheck size={20} />}
+          >
+            <SettingRow
+              label="Due Cards Threshold Alert"
+              description="Notify when unreviewed due cards pile up past this limit"
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  className="notion-input"
+                  style={{ width: "75px", padding: "4px 8px" }}
+                  value={settings.dueCardsThresholdCount}
+                  onChange={(e) => onChange("dueCardsThresholdCount", Math.max(1, parseInt(e.target.value) || 1))}
+                  disabled={!settings.dueCardsThresholdEnabled}
+                />
+                <input
+                  type="checkbox"
+                  checked={settings.dueCardsThresholdEnabled}
+                  onChange={(e) => onChange("dueCardsThresholdEnabled", e.target.checked)}
+                />
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label="Evening Streak Saver"
+              description="Last-chance alert if you haven't reviewed any cards today"
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <input
+                  type="time"
+                  className="notion-input"
+                  style={{ width: "120px", padding: "4px 8px" }}
+                  value={settings.streakSaverTime}
+                  onChange={(e) => onChange("streakSaverTime", e.target.value)}
+                  disabled={!settings.streakSaverEnabled}
+                />
+                <input
+                  type="checkbox"
+                  checked={settings.streakSaverEnabled}
+                  onChange={(e) => onChange("streakSaverEnabled", e.target.checked)}
+                />
+              </div>
+            </SettingRow>
+          </SettingCard>
+
+          {/* Quiet Hours (DND) & Sound Preferences */}
+          <SettingCard
+            title="Quiet Hours & Audio"
+            description="Silence non-urgent notifications during rest hours and customize feedback sounds."
+            icon={<Moon size={20} />}
+          >
+            <SettingRow
+              label="Quiet Hours (Do Not Disturb)"
+              description="Suppress notifications between specified hours"
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input
+                  type="time"
+                  className="notion-input"
+                  style={{ width: "105px", padding: "4px 6px" }}
+                  value={settings.quietHoursStart}
+                  onChange={(e) => onChange("quietHoursStart", e.target.value)}
+                  disabled={!settings.quietHoursEnabled}
+                />
+                <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>to</span>
+                <input
+                  type="time"
+                  className="notion-input"
+                  style={{ width: "105px", padding: "4px 6px" }}
+                  value={settings.quietHoursEnd}
+                  onChange={(e) => onChange("quietHoursEnd", e.target.value)}
+                  disabled={!settings.quietHoursEnabled}
+                />
+                <input
+                  type="checkbox"
+                  checked={settings.quietHoursEnabled}
+                  onChange={(e) => onChange("quietHoursEnabled", e.target.checked)}
+                />
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              label={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <Volume2 size={15} /> Sound Effects
+                </span>
+              }
+              description="Play subtle audio cues when study reminders trigger"
+            >
+              <input
+                type="checkbox"
+                checked={settings.soundEnabled}
+                onChange={(e) => onChange("soundEnabled", e.target.checked)}
+              />
+            </SettingRow>
+
+            <SettingRow
+              label={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <Bell size={15} /> In-App Banner Toasts
+                </span>
+              }
+              description="Show non-intrusive floating banners inside the Oxide Deck interface"
+            >
+              <input
+                type="checkbox"
+                checked={settings.inAppToastEnabled}
+                onChange={(e) => onChange("inAppToastEnabled", e.target.checked)}
+              />
+            </SettingRow>
+          </SettingCard>
+        </>
+      )}
+    </div>
+  );
+}

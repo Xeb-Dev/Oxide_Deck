@@ -217,8 +217,15 @@ export function buildPdfHighlightMap(matches: PdfHighlightMatch[]): Record<numbe
   );
 }
 
-export async function renderPdfPageToImage(arrayBuffer: ArrayBuffer, pageNumber: number, scale = 1.5): Promise<string> {
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) });
+export async function renderPdfPageToImage(
+  arrayBuffer: ArrayBuffer | ArrayBufferLike | Uint8Array,
+  pageNumber: number,
+  scale = 1.5
+): Promise<string> {
+  const data = arrayBuffer instanceof Uint8Array
+    ? arrayBuffer
+    : new Uint8Array(arrayBuffer.slice(0));
+  const loadingTask = pdfjs.getDocument({ data });
   const pdf = await loadingTask.promise;
 
   const validPageNum = Math.max(1, Math.min(pageNumber, pdf.numPages));

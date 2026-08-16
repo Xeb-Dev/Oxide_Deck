@@ -471,7 +471,7 @@ Rules:
  * extracts flashcard text, and returns the diagram image URL attached to the card.
  */
 export async function extractDiagramFromPdfWithAI(
-  pdfArrayBuffer: ArrayBuffer,
+  pdfArrayBuffer: ArrayBuffer | ArrayBufferLike | Uint8Array,
   diagramPrompt: string,
   pdfExtraction: { pageCount: number; pages: { pageNumber: number; text: string }[] }
 ): Promise<PdfGeneratedFlashcard & { front_image_url?: string }> {
