@@ -9,10 +9,11 @@ import {
   FullTestAnalysisResult, GeneratedMockQuestion
 } from "../services/llm";
 import {
-  Clock, Loader2, Play, CheckCircle2
+  Clock, Loader2, Play, CheckCircle2, LogOut
 } from "lucide-react";
 import MathText from "../components/MathText";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
+import ConfirmModal from "../components/ConfirmModal";
 
 interface MockExamProps {
   currentNav: {
@@ -20,9 +21,10 @@ interface MockExamProps {
     deckId?: string;
   };
   setCurrentNav: (nav: any) => void;
+  onExamActiveChange?: (active: boolean) => void;
 }
 
-export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProps) {
+export default function MockExamPage({ currentNav, setCurrentNav, onExamActiveChange }: MockExamProps) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -246,6 +248,43 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
     }
   };
 
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+
+  // Active exam navigation guard & beforeunload protection
+  useEffect(() => {
+    const isActive = mockQuestions.length > 0 && !submitted;
+    if (onExamActiveChange) {
+      onExamActiveChange(isActive);
+    }
+
+    if (isActive) {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        e.returnValue = "";
+      };
+      window.addEventListener("beforeunload", handleBeforeUnload);
+      return () => {
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      };
+    }
+  }, [mockQuestions.length, submitted, onExamActiveChange]);
+
+  const handleLeaveExam = () => {
+    setShowLeaveModal(true);
+  };
+
+  const handleConfirmLeaveExam = () => {
+    setShowLeaveModal(false);
+    setTimerActive(false);
+    setMockQuestions([]);
+    setMockUserAnswers([]);
+    setMockMathWork([]);
+    setTimeRemainingSeconds(null);
+    setSubmitted(false);
+    setAnalysisResult(null);
+    if (onExamActiveChange) onExamActiveChange(false);
+  };
+
   // Submit exam handler
   const handleSubmitExam = async () => {
     if (submitting || submitted) return;
@@ -289,6 +328,7 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
 
       setAnalysisResult(result);
       setSubmitted(true);
+      if (onExamActiveChange) onExamActiveChange(false);
       setStatus({ message: `Mock Exam graded! ${result.errors.length} error(s) logged to Scores & Analytics tab.`, variant: "success" });
     } catch (e: any) {
       console.error(e);
@@ -311,6 +351,17 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
 
   return (
     <>
+      <ConfirmModal
+        isOpen={showLeaveModal}
+        title="Leave Mock Exam?"
+        message="Are you sure you want to leave this mock exam? All your current answers, timer progress, and unsubmitted work will be lost."
+        confirmLabel="Leave Exam"
+        cancelLabel="Stay in Exam"
+        variant="danger"
+        onConfirm={handleConfirmLeaveExam}
+        onCancel={() => setShowLeaveModal(false)}
+      />
+
       {status && (
         <StatusBanner
           message={status.message}
@@ -533,7 +584,7 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div
                 style={{
                   display: "flex",
@@ -551,6 +602,16 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
                 <Clock size={18} />
                 <span>{formatTimerDisplay(timeRemainingSeconds)}</span>
               </div>
+
+              <button
+                className="notion-btn secondary"
+                onClick={handleLeaveExam}
+                style={{ color: "var(--danger-color)", display: "flex", alignItems: "center", gap: "6px" }}
+                title="Abandon and leave this mock exam"
+              >
+                <LogOut size={16} />
+                Leave Exam
+              </button>
 
               <button
                 className="notion-btn primary"
@@ -661,7 +722,15 @@ export default function MockExamPage({ currentNav, setCurrentNav }: MockExamProp
             ))}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+            <button
+              className="notion-btn secondary"
+              onClick={handleLeaveExam}
+              style={{ color: "var(--danger-color)", display: "flex", alignItems: "center", gap: "6px" }}
+            >
+              <LogOut size={16} />
+              Leave Exam
+            </button>
             <button
               className="notion-btn primary"
               onClick={handleSubmitExam}

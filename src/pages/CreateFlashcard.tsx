@@ -9,7 +9,6 @@ import {
   scanImageForFlashcards,
   scanPdfTextForFlashcards,
   smartScanPdfForFlashcards,
-  extractDiagramWithAI,
   extractDiagramFromPdfWithAI,
   GeneratedFlashcard,
   PdfGeneratedFlashcard,
@@ -25,7 +24,7 @@ import {
 } from "../services/pdf";
 
 import { 
-  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap, Image as ImageIcon, ImagePlus, Loader2
+  Sparkles, Globe, Camera, Plus, Play, Trash, X, Zap, Image as ImageIcon, ImagePlus
 } from "lucide-react";
 
 import EmojiPicker from "../components/EmojiPicker";
@@ -86,12 +85,8 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
   const [manualTags, setManualTags] = useState("");
   const [frontImageUrl, setFrontImageUrl] = useState<string | null>(null);
   const [backImageUrl, setBackImageUrl] = useState<string | null>(null);
-  const [diagramQuery, setDiagramQuery] = useState("");
-  const [extractingDiagram, setExtractingDiagram] = useState(false);
   const [isDraggingOverFront, setIsDraggingOverFront] = useState(false);
   const [isDraggingOverBack, setIsDraggingOverBack] = useState(false);
-  const [showAiDiagramPrompt, setShowAiDiagramPrompt] = useState(false);
-  const [targetAiSide, setTargetAiSide] = useState<'front' | 'back'>('back');
 
   const [aiText, setAiText] = useState("");
 
@@ -207,29 +202,6 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
     }
   };
 
-  const handleExtractDiagram = async (side: 'front' | 'back' = targetAiSide) => {
-    if (!diagramQuery.trim()) {
-      showStatus("Please type what diagram you want extracted (e.g., Krebs Cycle, Heart Anatomy).", "warning");
-      return;
-    }
-    try {
-      setExtractingDiagram(true);
-      showStatus("AI is generating/extracting diagram into WebP image...", "info");
-      const webpUrl = await extractDiagramWithAI(diagramQuery, `${manualFront}\n${manualBack}`);
-      if (side === 'front') {
-        setFrontImageUrl(webpUrl);
-      } else {
-        setBackImageUrl(webpUrl);
-      }
-      showStatus(`Diagram attached to ${side.toUpperCase()} as WebP image!`, "success", 3000);
-    } catch (err: any) {
-      console.error(err);
-      showStatus(err.message || "Failed to extract diagram.", "error");
-    } finally {
-      setExtractingDiagram(false);
-    }
-  };
-
   const processImageFile = async (file: File, side: 'front' | 'back') => {
     try {
       setLoading(true);
@@ -301,7 +273,6 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
       setManualTags("");
       setFrontImageUrl(null);
       setBackImageUrl(null);
-      setDiagramQuery("");
       showStatus("Flashcard created successfully!", "success", 3000);
     } catch (e) {
       console.error(e);
@@ -1140,55 +1111,7 @@ export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardPro
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <ImageIcon size={14} color="var(--accent-color)" /> Drag & drop or paste an image onto either text box to attach it (saved as WebP)
               </span>
-              <button
-                type="button"
-                className="notion-btn secondary"
-                style={{ padding: "4px 10px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "4px" }}
-                onClick={() => setShowAiDiagramPrompt(!showAiDiagramPrompt)}
-              >
-                <Sparkles size={13} color="var(--accent-color)" /> AI Diagram Extractor
-              </button>
             </div>
-
-            {/* Inline AI Diagram Generator */}
-            {showAiDiagramPrompt && (
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", padding: "10px 12px", border: "1px solid var(--border-color)", borderRadius: "8px", backgroundColor: "var(--bg-secondary)" }}>
-                <Sparkles size={16} color="var(--accent-color)" />
-                <input
-                  type="text"
-                  className="notion-input"
-                  style={{ fontSize: "0.82rem", flex: 1 }}
-                  value={diagramQuery}
-                  onChange={(e) => setDiagramQuery(e.target.value)}
-                  placeholder="Type diagram topic (e.g. Krebs Cycle, Heart Anatomy, Refraction)..."
-                  autoFocus
-                />
-                <select
-                  className="notion-input"
-                  style={{ width: "90px", fontSize: "0.78rem" }}
-                  value={targetAiSide}
-                  onChange={(e) => setTargetAiSide(e.target.value as 'front' | 'back')}
-                >
-                  <option value="back">Back</option>
-                  <option value="front">Front</option>
-                </select>
-                <button
-                  type="button"
-                  className="notion-btn primary"
-                  style={{ padding: "6px 12px", fontSize: "0.78rem" }}
-                  onClick={async () => {
-                    await handleExtractDiagram(targetAiSide);
-                    setShowAiDiagramPrompt(false);
-                  }}
-                  disabled={extractingDiagram}
-                >
-                  {extractingDiagram ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : "Generate"}
-                </button>
-                <button type="button" className="theme-toggle-btn" onClick={() => setShowAiDiagramPrompt(false)}>
-                  <X size={14} />
-                </button>
-              </div>
-            )}
 
             {/* Front Text Area with Drag & Drop */}
             <div className="notion-input-group">

@@ -21,15 +21,17 @@ export default function ToastBanner() {
 
   useEffect(() => {
     const unsubscribe = subscribeToToasts(({ title, body, type = 'info' }) => {
-      const id = crypto.randomUUID();
-      setToasts(prev => [...prev, { id, title, body, type: type as any }]);
+      setToasts(prev => {
+        if (prev.some(t => t.title === title && t.body === body)) {
+          return prev;
+        }
+        const id = crypto.randomUUID();
+        setTimeout(() => {
+          setToasts(current => current.filter(t => t.id !== id));
+        }, 4500);
 
-      // Auto dismiss after 5 seconds
-      const timer = setTimeout(() => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-      }, 5000);
-
-      return () => clearTimeout(timer);
+        return [...prev, { id, title, body, type: type as any }];
+      });
     });
 
     return () => unsubscribe();

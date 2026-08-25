@@ -244,13 +244,16 @@ export async function triggerNotification(
   const settings = getNotificationSettings();
   if (!settings.masterEnabled) return false;
 
+  let shown = false;
+
   if (settings.inAppToastEnabled) {
     emitToast(title, body, type);
+    shown = true;
   }
 
   if (isQuietHours(settings)) {
     console.log("Notification suppressed due to Quiet Hours (DND)");
-    return false;
+    return shown;
   }
 
   if (settings.soundEnabled && typeof Audio !== "undefined") {
@@ -272,32 +275,31 @@ export async function triggerNotification(
     }
   }
 
-  let sent = false;
-
   try {
     const tauriNotif = await getTauriNotificationPlugin();
     if (tauriNotif && await tauriNotif.isPermissionGranted()) {
       tauriNotif.sendNotification({ title, body });
-      sent = true;
+      shown = true;
     }
   } catch {
     // Fallback to Web Notification API
   }
 
-  if (!sent && "Notification" in window && Notification.permission === "granted") {
+  if (!shown && "Notification" in window && Notification.permission === "granted") {
     try {
       new Notification(title, { body, icon: "/icon.png" });
-      sent = true;
+      shown = true;
     } catch (e) {
       console.warn("Failed to send web notification:", e);
     }
   }
 
-  return sent;
+  return shown;
 }
 
 /**
  * Core notification engine: checks database due cards & user activity to trigger study notifications.
+ * Ensures notifications only fire once per day and only one relevant notification per check.
  */
 export async function checkAndTriggerStudyReminders(
   dueCardsCount: number,
@@ -314,24 +316,22 @@ export async function checkAndTriggerStudyReminders(
   const todayDayKey = DAY_INDEX_MAP[now.getDay()];
   const todaySchedule = settings.weeklySchedule[todayDayKey];
 
-  // 1. Due Cards Threshold Notification
+  // 1. Due Cards Threshold Notification (once per day)
   if (
     settings.dueCardsThresholdEnabled &&
     dueCardsCount >= settings.dueCardsThresholdCount &&
     lastNotified.dueThreshold !== todayStr
   ) {
-    const sent = await triggerNotification(
+    setLastNotifiedDate("dueThreshold", todayStr);
+    await triggerNotification(
       "📚 Flashcards Ready for Review",
       `You have ${dueCardsCount} cards waiting for review. Great time for a study session!`,
       "info"
     );
-    if (sent) {
-      setLastNotifiedDate("dueThreshold", todayStr);
-      return { triggered: true, type: "dueThreshold" };
-    }
+    return { triggered: true, type: "dueThreshold" };
   }
 
-  // 2. Daily Study Reminder Notification (per-day schedule)
+  // 2. Daily Study Reminder Notification (per-day schedule, once per day)
   if (
     settings.dailyReminderEnabled &&
     todaySchedule?.enabled &&
@@ -339,20 +339,18 @@ export async function checkAndTriggerStudyReminders(
     lastNotified.dailyReminder !== todayStr &&
     todayReviewedCount === 0
   ) {
-    const sent = await triggerNotification(
+    setLastNotifiedDate("dailyReminder", todayStr);
+    await triggerNotification(
       "⏰ Daily Study Time!",
       dueCardsCount > 0
         ? `You have ${dueCardsCount} cards due today. Keep your memory sharp!`
         : `Ready to learn new flashcards today?`,
       "info"
     );
-    if (sent) {
-      setLastNotifiedDate("dailyReminder", todayStr);
-      return { triggered: true, type: "dailyReminder" };
-    }
+    return { triggered: true, type: "dailyReminder" };
   }
 
-  // 3. Streak Saver / Evening Alert (only on required streak study days)
+  // 3. Streak Saver / Evening Alert (only on required streak study days, once per day)
   const targetCards = settings.streakMinCards || 1;
   if (
     settings.streakSaverEnabled &&
@@ -361,37 +359,33 @@ export async function checkAndTriggerStudyReminders(
     lastNotified.streakSaver !== todayStr &&
     todayReviewedCount < targetCards
   ) {
+    setLastNotifiedDate("streakSaver", todayStr);
     const remaining = targetCards - todayReviewedCount;
     const msg = remaining > 1
       ? `You have reviewed ${todayReviewedCount}/${targetCards} cards today. Review ${remaining} more before midnight to keep your streak!`
       : `You haven't completed your daily study goal today. Complete a quick review session before midnight to keep your streak!`;
 
-    const sent = await triggerNotification(
+    await triggerNotification(
       "🔥 Don't Break Your Streak!",
       msg,
       "warning"
     );
-    if (sent) {
-      setLastNotifiedDate("streakSaver", todayStr);
-      return { triggered: true, type: "streakSaver" };
-    }
+    return { triggered: true, type: "streakSaver" };
   }
 
-  // 4. Leech / Optimal Retention Warning
+  // 4. Leech / Optimal Retention Warning (once per day)
   if (
     settings.leechWarningEnabled &&
     leechCardsCount > 0 &&
     lastNotified.leechWarning !== todayStr
   ) {
-    const sent = await triggerNotification(
+    setLastNotifiedDate("leechWarning", todayStr);
+    await triggerNotification(
       "🎯 Optimal Retention Alert",
       `${leechCardsCount} difficult flashcard(s) are due right now for maximum memory retention.`,
       "warning"
     );
-    if (sent) {
-      setLastNotifiedDate("leechWarning", todayStr);
-      return { triggered: true, type: "leechWarning" };
-    }
+    return { triggered: true, type: "leechWarning" };
   }
 
   return { triggered: false };

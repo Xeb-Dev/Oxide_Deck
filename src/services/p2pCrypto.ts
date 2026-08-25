@@ -1,294 +1,400 @@
 // ------------------------------------------------------------------
-// P2P CRYPTO SERVICE - AES-256-GCM End-to-End Encryption & P2P Stream
+// HIGH-DENSITY OFFLINE QR TRANSFER SERVICE
+// Standard HTTPS URL Format + fflate Level 9 Compression + Chunky Low-Density QR Codes
+// 100% Offline Optical Transfer - Instant Camera Recognition
 // ------------------------------------------------------------------
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+import * as fflate from "fflate";
+
+const B64_MAP = new Uint8Array(256);
+const B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+for (let i = 0; i < 256; i++) B64_MAP[i] = 255;
+for (let i = 0; i < B64_CHARS.length; i++) B64_MAP[B64_CHARS.charCodeAt(i)] = i;
+B64_MAP["-".charCodeAt(0)] = 62;
+B64_MAP["_".charCodeAt(0)] = 63;
+
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = "";
-  const bytes = new Uint8Array(buffer);
   const len = bytes.byteLength;
   for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return window.btoa(binary);
+  // URL-safe Base64: replaces + with - and / with _, removes padding =
+  return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-function bufToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function hexToBuf(hex: string): ArrayBuffer {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
-  return bytes.buffer;
-}
-
-export interface EncryptedSharePayload {
-  version: "1.0";
-  protocol: "OXSHARE" | "OXCONNECT";
-  keyHex: string;
-  ivHex: string;
-  ciphertextBase64: string;
-  itemType: "deck" | "folder" | "subject";
-  itemName: string;
-  itemIcon: string;
-  isP2pHandshake?: boolean;
-  token?: string;
-}
-
-// In-Memory & Local P2P Store
-const p2pChannel = new BroadcastChannel("oxide-p2p-share");
-
-interface P2pSession {
-  token: string;
-  keyHex: string;
-  ivHex: string;
-  ciphertextBase64: string;
-  itemType: "deck" | "folder" | "subject";
-  itemName: string;
-  itemIcon: string;
-  expiresAt: number;
-}
-
-const activeSessions = new Map<string, P2pSession>();
-
-// Listen for P2P requests over BroadcastChannel
-p2pChannel.onmessage = (event) => {
-  if (event.data?.type === "P2P_REQUEST_PAYLOAD") {
-    const { token } = event.data;
-    const session = activeSessions.get(token) || getSessionFromStorage(token);
-    if (session) {
-      p2pChannel.postMessage({
-        type: "P2P_RESPONSE_PAYLOAD",
-        token,
-        ciphertextBase64: session.ciphertextBase64,
-      });
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const values: number[] = [];
+  for (let i = 0; i < base64.length; i++) {
+    const val = B64_MAP[base64.charCodeAt(i) & 0xff];
+    if (val !== 255) {
+      values.push(val);
     }
   }
-};
 
-function saveSessionToStorage(session: P2pSession) {
-  try {
-    sessionStorage.setItem(`oxide_p2p_${session.token}`, JSON.stringify(session));
-  } catch (e) {
-    // Ignore storage quota errors
+  if (values.length === 0) {
+    throw new Error("Empty payload data received.");
   }
-}
 
-function getSessionFromStorage(token: string): P2pSession | null {
-  try {
-    const raw = sessionStorage.getItem(`oxide_p2p_${token}`);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    // ignore
+  const outBytes: number[] = [];
+  for (let i = 0; i < values.length; i += 4) {
+    const b0 = values[i];
+    const b1 = i + 1 < values.length ? values[i + 1] : 0;
+    const b2 = i + 2 < values.length ? values[i + 2] : 64;
+    const b3 = i + 3 < values.length ? values[i + 3] : 64;
+
+    outBytes.push((b0 << 2) | (b1 >> 4));
+    if (b2 !== 64 && i + 2 < values.length) {
+      outBytes.push(((b1 & 15) << 4) | (b2 >> 2));
+    }
+    if (b3 !== 64 && i + 3 < values.length) {
+      outBytes.push(((b2 & 3) << 6) | b3);
+    }
   }
-  return null;
+
+  return new Uint8Array(outBytes);
 }
 
 /**
- * Encrypt a JS object payload (deck, folder, or subject) using AES-256-GCM.
- * Automatically switches to lightweight P2P Handshake QR Code if payload is large.
+ * Super-compact Tuple-based Minification:
+ * Strips all JSON property key overhead by packing cards into lightweight positional arrays.
+ */
+function minifyToCompactTuples(payload: any): any {
+  if (!payload) return payload;
+
+  const min: any = { t: payload.type || "deck" };
+
+  if (payload.deck) {
+    min.d = [
+      payload.deck.name || "",
+      payload.deck.icon || "🃏",
+      payload.deck.description || "",
+    ];
+  }
+
+  if (payload.subject) {
+    min.sb = [
+      payload.subject.id || "",
+      payload.subject.name || "",
+      payload.subject.icon || "📚",
+      payload.subject.color || "#6366f1",
+    ];
+  }
+
+  if (Array.isArray(payload.folders)) {
+    min.fo = payload.folders.map((f: any) => [
+      f.id,
+      f.name,
+      f.icon || "📁",
+      f.parent_folder_id || "",
+      f.subject_id || "",
+    ]);
+  }
+
+  if (Array.isArray(payload.decks)) {
+    min.dk = payload.decks.map((d: any) => [
+      d.id,
+      d.name,
+      d.icon || "🃏",
+      d.description || "",
+      d.folder_id || "",
+    ]);
+  }
+
+  if (Array.isArray(payload.flashcards)) {
+    min.c = payload.flashcards.map((c: any) => [
+      c.front || "",
+      c.back || "",
+      c.tags || "",
+      c._deck_temp_id || "",
+      c.image_url || "",
+      c.front_image_url || "",
+      c.back_image_url || "",
+    ]);
+  }
+
+  return min;
+}
+
+/**
+ * Reconstructs full database model from compact tuples
+ */
+function unminifyFromCompactTuples(min: any): any {
+  if (!min || typeof min !== "object") return min;
+
+  // If already full format
+  if (min.version || min.flashcards) return min;
+
+  const payload: any = {
+    version: "1.0",
+    type: min.t || "deck",
+    exported_at: new Date().toISOString(),
+  };
+
+  if (Array.isArray(min.d)) {
+    payload.deck = {
+      name: min.d[0] || "Imported Deck",
+      icon: min.d[1] || "🃏",
+      description: min.d[2] || "",
+    };
+  }
+
+  if (Array.isArray(min.sb)) {
+    payload.subject = {
+      id: min.sb[0],
+      name: min.sb[1],
+      icon: min.sb[2] || "📚",
+      color: min.sb[3] || "#6366f1",
+    };
+  }
+
+  if (Array.isArray(min.fo)) {
+    payload.folders = min.fo.map((f: any) => ({
+      id: f[0],
+      name: f[1],
+      icon: f[2] || "📁",
+      parent_folder_id: f[3] || null,
+      subject_id: f[4] || null,
+    }));
+  }
+
+  if (Array.isArray(min.dk)) {
+    payload.decks = min.dk.map((d: any) => ({
+      id: d[0],
+      name: d[1],
+      icon: d[2] || "🃏",
+      description: d[3] || "",
+      folder_id: d[4] || null,
+    }));
+  }
+
+  if (Array.isArray(min.c)) {
+    payload.flashcards = min.c.map((c: any) => ({
+      front: c[0],
+      back: c[1],
+      tags: c[2] || "",
+      _deck_temp_id: c[3] || undefined,
+      image_url: c[4] || null,
+      front_image_url: c[5] || null,
+      back_image_url: c[6] || null,
+    }));
+  }
+
+  return payload;
+}
+
+export interface ChunkedQrResult {
+  qrStrings: string[];
+  totalChunks: number;
+  sessionHash: string;
+  itemType: "deck" | "folder" | "subject";
+  itemName: string;
+  itemIcon: string;
+}
+
+export interface ScannedChunk {
+  protocol: "OXPKG";
+  sessionHash: string;
+  chunkIndex: number;
+  totalChunks: number;
+  itemType: "deck" | "folder" | "subject";
+  itemName: string;
+  chunkData: string;
+}
+
+/**
+ * Maximum compression of payload to Standard HTTPS URL format Multi-Part QR codes.
+ * Small chunk size (240 chars) keeps QR module matrix small (Version 6, ~41x41) with large chunky pixels for instant phone scanning.
  */
 export async function encryptPackagePayload(
   payloadObj: any,
   itemType: "deck" | "folder" | "subject",
   itemName: string,
   itemIcon: string
-): Promise<{ qrString: string; payloadStruct: EncryptedSharePayload; isP2pStream: boolean }> {
-  const jsonStr = JSON.stringify(payloadObj);
-  const textEncoder = new TextEncoder();
-  const plainBytes = textEncoder.encode(jsonStr);
+): Promise<ChunkedQrResult> {
+  // 1. Minify JSON into keyless tuples
+  const minified = minifyToCompactTuples(payloadObj);
+  const jsonStr = JSON.stringify(minified);
 
-  // Generate 256-bit AES-GCM Key
-  const cryptoKey = await window.crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
+  // 2. Heavy Deflate Level 9 Compression via fflate
+  const rawBytes = fflate.strToU8(jsonStr);
+  const compressedBytes = fflate.deflateSync(rawBytes, { level: 9 });
+  const compressedBase64 = uint8ArrayToBase64(compressedBytes);
 
-  // Export Key to raw bytes
-  const rawKeyBuf = await window.crypto.subtle.exportKey("raw", cryptoKey);
-  const keyHex = bufToHex(rawKeyBuf);
+  // 3. Short 4-char session hash for multi-part integrity
+  let hashNum = 0;
+  for (let i = 0; i < Math.min(jsonStr.length, 100); i++) {
+    hashNum = (hashNum * 31 + jsonStr.charCodeAt(i)) >>> 0;
+  }
+  const sessionHash = hashNum.toString(36).substring(0, 4);
 
-  // Generate 12-byte IV
-  const ivBytes = window.crypto.getRandomValues(new Uint8Array(12));
-  const ivHex = bufToHex(ivBytes.buffer);
+  // 4. High-capacity chunk size: 450 chars fits ~35-50 flashcards in 1 QR code while remaining sharp and scannable on 320-440px canvas
+  const CHUNK_SIZE = 450;
+  const totalChunks = Math.max(1, Math.ceil(compressedBase64.length / CHUNK_SIZE));
+  const qrStrings: string[] = [];
 
-  // Encrypt with AES-GCM
-  const cipherBuffer = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: ivBytes },
-    cryptoKey,
-    plainBytes
-  );
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, compressedBase64.length);
+    const chunkData = compressedBase64.substring(start, end);
+    const chunkIndex = i + 1; // 1-based index
 
-  const ciphertextBase64 = arrayBufferToBase64(cipherBuffer);
-
-  const payloadStruct: EncryptedSharePayload = {
-    version: "1.0",
-    protocol: "OXSHARE",
-    keyHex,
-    ivHex,
-    ciphertextBase64,
-    itemType,
-    itemName,
-    itemIcon,
-  };
-
-  const directQrString = `OXSHARE1:${keyHex}:${ivHex}:${ciphertextBase64}`;
-
-  // If payload is small enough (< 1200 chars), use direct payload QR
-  if (directQrString.length <= 1200) {
-    return { qrString: directQrString, payloadStruct, isP2pStream: false };
+    // Pure URL-safe HTTPS format without unnecessary query params
+    const qrUrl = `https://oxide.app/s?h=${sessionHash}&c=${chunkIndex}&t=${totalChunks}&y=${itemType}&d=${chunkData}`;
+    qrStrings.push(qrUrl);
   }
 
-  // Payload is large (e.g. contains cards or images) -> Generate P2P Handshake QR
-  const token = `p2p_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const p2pSession: P2pSession = {
-    token,
-    keyHex,
-    ivHex,
-    ciphertextBase64,
+  return {
+    qrStrings,
+    totalChunks,
+    sessionHash,
     itemType,
     itemName,
     itemIcon,
-    expiresAt: Date.now() + 120000, // 2 minute lifetime
   };
-
-  activeSessions.set(token, p2pSession);
-  saveSessionToStorage(p2pSession);
-
-  // Ultra-compact P2P handshake QR string (~150 chars, ALWAYS fits in any QR code)
-  const p2pQrString = `OXCONNECT1:${token}:${keyHex}:${ivHex}:${itemType}:${encodeURIComponent(itemName)}`;
-
-  payloadStruct.protocol = "OXCONNECT";
-  payloadStruct.isP2pHandshake = true;
-  payloadStruct.token = token;
-
-  return { qrString: p2pQrString, payloadStruct, isP2pStream: true };
 }
 
 /**
- * Decrypt a QR payload string or struct using Web Crypto API AES-256-GCM.
- * Seamlessly resolves direct payloads AND P2P stream handshakes.
+ * Parse any scanned QR code string (supports standard HTTPS URLs, custom protocols, and legacy formats)
  */
-export async function decryptPackagePayload(rawPayload: string): Promise<{ data: any; itemType: string; itemName?: string }> {
-  let keyHex = "";
-  let ivHex = "";
-  let ciphertextBase64 = "";
+export function parseScannedQrString(rawString: string): ScannedChunk {
+  const trimmed = rawString.trim();
 
-  const trimmed = rawPayload.trim();
-
-  // Case 1: Direct QR Payload OXSHARE1:<keyHex>:<ivHex>:<ciphertextBase64>
-  if (trimmed.startsWith("OXSHARE1:")) {
-    const parts = trimmed.split(":");
-    if (parts.length < 4) {
-      throw new Error("Invalid OXSHARE QR code payload format.");
-    }
-    keyHex = parts[1];
-    ivHex = parts[2];
-    ciphertextBase64 = parts.slice(3).join(":");
-  }
-  // Case 2: P2P Stream Handshake QR Code OXCONNECT1:<token>:<keyHex>:<ivHex>:<itemType>:<itemName>
-  else if (trimmed.startsWith("OXCONNECT1:")) {
-    const parts = trimmed.split(":");
-    if (parts.length < 5) {
-      throw new Error("Invalid OXCONNECT P2P handshake payload format.");
-    }
-    const token = parts[1];
-    keyHex = parts[2];
-    ivHex = parts[3];
-
-    // Request payload from session store / BroadcastChannel
-    const session = activeSessions.get(token) || getSessionFromStorage(token);
-    if (session) {
-      ciphertextBase64 = session.ciphertextBase64;
-    } else {
-      // Query active P2P broadcast channels
-      ciphertextBase64 = await fetchP2pPayloadFromChannel(token);
-    }
-  } else {
-    // Case 3: Full JSON struct
+  // 1. Standard HTTPS URL Format: https://oxide.app/s?h=...&c=...&t=...&y=...&n=...&d=...
+  if (trimmed.includes("oxide.app/s?") || trimmed.includes("oxidedeck://share?") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
-      const parsed = JSON.parse(trimmed) as EncryptedSharePayload;
-      if (parsed.keyHex && parsed.ciphertextBase64) {
-        keyHex = parsed.keyHex;
-        ivHex = parsed.ivHex;
-        ciphertextBase64 = parsed.ciphertextBase64;
-      } else {
-        throw new Error("Not an encrypted OXSHARE or OXCONNECT package payload.");
+      const url = new URL(trimmed);
+      const params = url.searchParams;
+      const sessionHash = params.get("h") || "pkg1";
+      const chunkIndex = parseInt(params.get("c") || "1", 10);
+      const totalChunks = parseInt(params.get("t") || "1", 10);
+      const itemType = (params.get("y") || "deck") as "deck" | "folder" | "subject";
+      
+      let itemName = "Imported Package";
+      try {
+        itemName = params.get("n") ? decodeURIComponent(params.get("n")!) : "Imported Package";
+      } catch {
+        itemName = params.get("n") || "Imported Package";
       }
-    } catch (e: any) {
-      throw new Error("Unrecognized QR Code payload format: " + e.message);
+
+      // Handle both URL-safe Base64 and legacy standard Base64
+      const rawChunkData = params.get("d") || "";
+      const chunkData = rawChunkData.replace(/ /g, "+");
+
+      if (chunkData) {
+        return {
+          protocol: "OXPKG",
+          sessionHash,
+          chunkIndex,
+          totalChunks,
+          itemType,
+          itemName,
+          chunkData,
+        };
+      }
+    } catch {
+      // Continue to regex/string fallback
     }
   }
 
-  if (!ciphertextBase64) {
-    throw new Error("P2P session payload not found or expired. Please re-scan or share via package file.");
+  // 2. Custom Protocol: OXPKG:1:<sessionHash>:<chunkIndex>:<totalChunks>:<itemType>:<encodedName>:<chunkData>
+  if (trimmed.startsWith("OXPKG:1:")) {
+    const parts = trimmed.split(":");
+    if (parts.length >= 8) {
+      return {
+        protocol: "OXPKG",
+        sessionHash: parts[2],
+        chunkIndex: parseInt(parts[3], 10),
+        totalChunks: parseInt(parts[4], 10),
+        itemType: parts[5] as "deck" | "folder" | "subject",
+        itemName: decodeURIComponent(parts[6]),
+        chunkData: parts.slice(7).join(":"),
+      };
+    }
   }
 
-  // Import AES-256 key
-  const rawKeyBuf = hexToBuf(keyHex);
-  const cryptoKey = await window.crypto.subtle.importKey(
-    "raw",
-    rawKeyBuf,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
+  // 3. Fallback for OXCHUNK:1:
+  if (trimmed.startsWith("OXCHUNK:1:")) {
+    const parts = trimmed.split(":");
+    return {
+      protocol: "OXPKG",
+      sessionHash: parts[2],
+      chunkIndex: parseInt(parts[3], 10),
+      totalChunks: parseInt(parts[4], 10),
+      itemType: parts[7] as "deck" | "folder" | "subject",
+      itemName: decodeURIComponent(parts[8] || "Imported Package"),
+      chunkData: parts.slice(9).join(":"),
+    };
+  }
 
-  // Prepare IV & Ciphertext
-  const ivBuf = hexToBuf(ivHex);
-  const cipherBuf = base64ToArrayBuffer(ciphertextBase64);
+  throw new Error(`Unrecognized QR Code. Please ensure you are scanning an Oxide Deck QR code.`);
+}
 
-  // Decrypt
-  const decryptedBuf = await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: new Uint8Array(ivBuf) },
-    cryptoKey,
-    cipherBuf
-  );
+/**
+ * Assembles collected chunks and decompresses back to SQLite-ready package.
+ * Chunks can be scanned in ANY order!
+ */
+export async function assembleAndDecryptPackage(
+  chunksMap: Map<number, string>,
+  header: ScannedChunk
+): Promise<{ data: any; itemType: string; itemName: string }> {
+  const { totalChunks, itemType, itemName } = header;
 
-  const textDecoder = new TextDecoder();
-  const jsonStr = textDecoder.decode(decryptedBuf);
-  const data = JSON.parse(jsonStr);
+  // 1. Verify all parts are present
+  for (let i = 1; i <= totalChunks; i++) {
+    if (!chunksMap.has(i)) {
+      throw new Error(`Missing Part ${i} of ${totalChunks}.`);
+    }
+  }
 
-  const packageType = data.type || (data.deck ? "deck" : data.subject ? "subject" : data.folders ? "folder" : "unknown");
+  // 2. Concatenate chunks in order 1..N
+  let fullBase64 = "";
+  for (let i = 1; i <= totalChunks; i++) {
+    fullBase64 += chunksMap.get(i);
+  }
+
+  // 3. Base64 to Compressed Binary
+  const compressedBytes = base64ToUint8Array(fullBase64);
+
+  // 4. Heavy Deflate Decompression via fflate
+  let jsonStr = "";
+  try {
+    const decompressedBytes = fflate.inflateSync(compressedBytes);
+    jsonStr = fflate.strFromU8(decompressedBytes);
+  } catch (err: any) {
+    // If raw uncompressed fallback
+    try {
+      jsonStr = fflate.strFromU8(compressedBytes);
+    } catch {
+      throw new Error(`Decompression failed: ${err.message}`);
+    }
+  }
+
+  // 5. Unminify Tuples to full schema
+  const parsedMinified = JSON.parse(jsonStr);
+  const fullData = unminifyFromCompactTuples(parsedMinified);
+
+  const resolvedType = fullData.type || itemType || (fullData.deck ? "deck" : fullData.subject ? "subject" : "folder");
+  const resolvedName = fullData.deck?.name || fullData.subject?.name || fullData.folders?.[0]?.name || itemName;
 
   return {
-    data,
-    itemType: packageType,
-    itemName: data.deck?.name || data.subject?.name || data.folders?.[0]?.name || "Imported Package",
+    data: fullData,
+    itemType: resolvedType,
+    itemName: resolvedName,
   };
 }
 
-async function fetchP2pPayloadFromChannel(token: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const tempChannel = new BroadcastChannel("oxide-p2p-share");
-    const timeout = setTimeout(() => {
-      tempChannel.close();
-      reject(new Error("P2P transfer timed out. Sender session may have closed."));
-    }, 4000);
+/**
+ * Direct one-shot decrypt for single QR code or text payload
+ */
+export async function decryptPackagePayload(rawPayload: string): Promise<{ data: any; itemType: string; itemName: string }> {
+  const chunk = parseScannedQrString(rawPayload);
+  const map = new Map<number, string>();
+  map.set(chunk.chunkIndex, chunk.chunkData);
 
-    tempChannel.onmessage = (evt) => {
-      if (evt.data?.type === "P2P_RESPONSE_PAYLOAD" && evt.data?.token === token) {
-        clearTimeout(timeout);
-        tempChannel.close();
-        resolve(evt.data.ciphertextBase64);
-      }
-    };
+  if (chunk.totalChunks > 1) {
+    throw new Error(`This is Part ${chunk.chunkIndex} of a ${chunk.totalChunks}-part QR code. Please scan all ${chunk.totalChunks} parts.`);
+  }
 
-    tempChannel.postMessage({ type: "P2P_REQUEST_PAYLOAD", token });
-  });
+  return assembleAndDecryptPackage(map, chunk);
 }

@@ -20,12 +20,17 @@ interface NavigationState {
 }
 
 import ToastBanner from "./components/ToastBanner";
+import ConfirmModal from "./components/ConfirmModal";
 
 function App() {
   const [currentNav, setCurrentNav] = useState<NavigationState>({
     page: 'dashboard'
   });
   
+  const [isMockExamActive, setIsMockExamActive] = useState(false);
+  const [pendingNav, setPendingNav] = useState<NavigationState | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
   // A refresh counter to trigger sidebar reloads when database updates occur (adding folders/decks)
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
 
@@ -34,7 +39,26 @@ function App() {
   };
 
   const handleNavChange = (newNav: NavigationState) => {
+    if (isMockExamActive && newNav.page !== 'mock') {
+      setPendingNav(newNav);
+      setShowLeaveConfirm(true);
+      return;
+    }
     setCurrentNav(newNav);
+  };
+
+  const handleConfirmLeave = () => {
+    setIsMockExamActive(false);
+    setShowLeaveConfirm(false);
+    if (pendingNav) {
+      setCurrentNav(pendingNav);
+      setPendingNav(null);
+    }
+  };
+
+  const handleCancelLeave = () => {
+    setShowLeaveConfirm(false);
+    setPendingNav(null);
   };
 
   const renderContent = () => {
@@ -56,7 +80,13 @@ function App() {
       case 'tests':
         return <TestPage currentNav={currentNav} setCurrentNav={handleNavChange} />;
       case 'mock':
-        return <MockExamPage currentNav={currentNav} setCurrentNav={handleNavChange} />;
+        return (
+          <MockExamPage 
+            currentNav={currentNav} 
+            setCurrentNav={handleNavChange} 
+            onExamActiveChange={setIsMockExamActive}
+          />
+        );
       case 'scores':
         return <ScoresPage setCurrentNav={handleNavChange} />;
       case 'settings':
@@ -69,6 +99,16 @@ function App() {
   return (
     <>
       <ToastBanner />
+      <ConfirmModal
+        isOpen={showLeaveConfirm}
+        title="Leave Mock Exam?"
+        message="Are you sure you want to navigate away? All your current answers, timer countdown, and unsubmitted progress will be lost."
+        confirmLabel="Leave Exam"
+        cancelLabel="Stay in Exam"
+        variant="danger"
+        onConfirm={handleConfirmLeave}
+        onCancel={handleCancelLeave}
+      />
       <Layout 
         currentNav={currentNav} 
         setCurrentNav={handleNavChange} 

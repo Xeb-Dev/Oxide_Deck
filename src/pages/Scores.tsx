@@ -119,52 +119,40 @@ export default function ScoresPage({ setCurrentNav: _setCurrentNav }: Props) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* OVERALL STAT CARDS */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px" }}>
-            <div className="test-card" style={{ padding: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-color)", fontWeight: 600, fontSize: "0.85rem" }}>
-                <TrendingUp size={18} /> Overall Average Grade
+          <div className="scores-overview-grid">
+            <div className="test-card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--accent-color)", fontWeight: 600, fontSize: "0.8rem" }}>
+                <TrendingUp size={16} style={{ flexShrink: 0 }} /> Overall Avg Grade
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)", marginTop: "8px" }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", flexShrink: 0 }}>
                 {avgOverallScore != null ? `${avgOverallScore}%` : "N/A"}
               </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                Across {scoredTests.length} evaluated test(s)
-              </div>
             </div>
 
-            <div className="test-card" style={{ padding: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-color)", fontWeight: 600, fontSize: "0.85rem" }}>
-                <Sparkles size={18} /> AI Diagnostic Insights
+            <div className="test-card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--accent-color)", fontWeight: 600, fontSize: "0.8rem" }}>
+                <Sparkles size={16} style={{ flexShrink: 0 }} /> AI Diagnostic Reports
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)", marginTop: "8px" }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", flexShrink: 0 }}>
                 {analyses.length}
               </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                Comprehensive AI evaluations
-              </div>
             </div>
 
-            <div className="test-card" style={{ padding: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#8b5cf6", fontWeight: 600, fontSize: "0.85rem" }}>
-                <Target size={18} /> Study Focus Points
+            <div className="test-card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#8b5cf6", fontWeight: 600, fontSize: "0.8rem" }}>
+                <Target size={16} style={{ flexShrink: 0 }} /> Study Focus Points
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)", marginTop: "8px" }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", flexShrink: 0 }}>
                 {errors.length}
               </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                Key review points identified
-              </div>
             </div>
 
-            <div className="test-card" style={{ padding: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.85rem" }}>
-                <BookOpen size={18} /> Total Saved Tests
+            <div className="test-card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-secondary)", fontWeight: 600, fontSize: "0.8rem" }}>
+                <BookOpen size={16} style={{ flexShrink: 0 }} /> Total Saved Tests
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--text-primary)", marginTop: "8px" }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text-primary)", flexShrink: 0 }}>
                 {tests.length}
-              </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                Across {subjects.length} subject(s)
               </div>
             </div>
           </div>
@@ -178,7 +166,7 @@ export default function ScoresPage({ setCurrentNav: _setCurrentNav }: Props) {
             subjectsToDisplay.map((sub) => {
               const subTests = tests.filter((t) => t.subject_id === sub.id);
               const subScoredTests = subTests.filter((t) => t.score != null && t.max_score > 0 && t.test_date != null);
-              
+
               // Sort tests chronologically for subject line chart
               const subTrendData = [...subScoredTests]
                 .sort((a, b) => new Date(a.test_date!).getTime() - new Date(b.test_date!).getTime())
