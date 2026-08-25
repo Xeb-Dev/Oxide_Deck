@@ -476,25 +476,10 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
           </div>
         </div>
 
-        <div className="sidebar-footer" style={{ padding: "12px" }}>
+        <div className="sidebar-footer">
           <div 
-            className={`sidebar-item ${currentNav.page === 'settings' ? 'active' : ''}`}
+            className={`sidebar-item sidebar-settings-btn ${currentNav.page === 'settings' ? 'active' : ''}`}
             onClick={() => handleNav({ page: 'settings' })}
-            style={{
-              margin: 0,
-              padding: "10px 14px",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              borderRadius: "8px",
-              border: "1px solid var(--border-color)",
-              backgroundColor: currentNav.page === 'settings' ? "var(--accent-light)" : "var(--bg-primary)",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
           >
             <Settings size={20} style={{ color: currentNav.page === 'settings' ? "var(--accent-color)" : "var(--text-secondary)" }} />
             <span>Settings</span>

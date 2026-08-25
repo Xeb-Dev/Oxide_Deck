@@ -118,3 +118,36 @@ export async function getDueFlashcards(): Promise<(Flashcard & { deck_name: stri
     "SELECT f.*, d.name as deck_name FROM flashcards f JOIN decks d ON f.deck_id = d.id WHERE datetime(f.next_review) <= datetime('now') ORDER BY f.next_review ASC"
   );
 }
+
+export interface CardStateStats {
+  newCount: number;
+  learningCount: number;
+  reviewCount: number;
+  relearningCount: number;
+  totalCount: number;
+}
+
+export async function getCardStateStats(): Promise<CardStateStats> {
+  const db = await getDB();
+  const rows = await db.select<{ state: number; count: number }[]>(
+    "SELECT state, COUNT(*) as count FROM flashcards GROUP BY state"
+  );
+
+  let newCount = 0;
+  let learningCount = 0;
+  let reviewCount = 0;
+  let relearningCount = 0;
+  let totalCount = 0;
+
+  for (const r of rows) {
+    totalCount += r.count;
+    if (r.state === 0) newCount += r.count;
+    else if (r.state === 1) learningCount += r.count;
+    else if (r.state === 2) reviewCount += r.count;
+    else if (r.state === 3) relearningCount += r.count;
+    else newCount += r.count; // fallback for unclassified
+  }
+
+  return { newCount, learningCount, reviewCount, relearningCount, totalCount };
+}
+
