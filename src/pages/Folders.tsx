@@ -471,6 +471,16 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
           onSave={handleSaveCard}
           onShowBanner={(message, variant) => setBanner({ message, variant })}
         />
+
+        {qrShareItem && (
+          <QrShareModal
+            itemType={qrShareItem.itemType}
+            itemId={qrShareItem.itemId}
+            itemName={qrShareItem.itemName}
+            itemIcon={qrShareItem.itemIcon}
+            onClose={() => setQrShareItem(null)}
+          />
+        )}
       </>
     );
   }
@@ -588,12 +598,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                   alignItems: "center",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "1.8rem" }}>{subject.icon || "📚"}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                  <span style={{ fontSize: "1.8rem", flexShrink: 0 }}>{subject.icon || "📚"}</span>
                   <span style={{ fontWeight: 700, fontSize: "1.2rem", fontFamily: "var(--font-title)" }}>
                     {subject.name}
                   </span>
                   <span
+                    className="subject-node-count-badge"
                     style={{
                       fontSize: "0.8rem",
                       color: "var(--text-muted)",
@@ -601,6 +612,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                       padding: "2px 8px",
                       borderRadius: "10px",
                       border: "1px solid var(--border-color)",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {subjectFolders.length} folder{subjectFolders.length !== 1 ? "s" : ""}

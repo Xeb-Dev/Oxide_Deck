@@ -65,6 +65,17 @@ export interface RevisionHistory {
   rating: number | null;
 }
 
+export interface WeekDayMatrixItem {
+  dayKey: string;
+  dayLabel: string;
+  fullDate: string;
+  isToday: boolean;
+  isPast: boolean;
+  isFuture: boolean;
+  isCompleted: boolean;
+  count: number;
+}
+
 export interface Stats {
   totalReviews: number;
   averageScore: number;
@@ -74,6 +85,7 @@ export interface Stats {
   streakProgressToday: number;
   streakConditionMetToday: boolean;
   weeklyProgress: { day: string; count: number; avg_score: number }[];
+  currentWeekMatrix: WeekDayMatrixItem[];
 }
 
 export interface FsrsParametersInfo {

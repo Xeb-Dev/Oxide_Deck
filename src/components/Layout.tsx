@@ -7,7 +7,6 @@ import {
   ChevronRight, 
   Sun, 
   Moon,
-  Sparkles,
   Menu,
   X,
   FileText,
@@ -29,6 +28,7 @@ interface LayoutProps {
     subjectId?: string;
     revisionMode?: 'flashcard' | 'quiz' | 'teach';
     openModal?: 'subject' | 'folder' | 'deck';
+    createTab?: 'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf';
   };
   setCurrentNav: (nav: any) => void;
   children: React.ReactNode;
@@ -521,10 +521,11 @@ export default function Layout({ currentNav, setCurrentNav, children, refreshTri
             </button>
             <button 
               className="notion-btn workspace-quick-scan-btn" 
-              style={{ padding: "4px 10px", fontSize: "0.8rem" }}
-              onClick={() => handleNav({ page: 'create' })}
+              onClick={() => handleNav({ page: 'create', createTab: 'ai-camera' })}
+              aria-label="Quick Scan"
+              title="Quick Scan (AI Camera / Image OCR)"
             >
-              <Sparkles size={12} />
+              <Plus size={16} />
               <span className="workspace-quick-scan-label">Quick Scan</span>
             </button>
           </div>

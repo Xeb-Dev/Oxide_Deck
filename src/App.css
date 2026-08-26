@@ -377,6 +377,24 @@ body {
   -moz-osx-font-smoothing: grayscale !important;
 }
 
+/* Quick Scan Button */
+.workspace-quick-scan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  height: 34px;
+  min-height: 34px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.workspace-quick-scan-btn svg {
+  flex-shrink: 0;
+}
+
 .breadcrumbs {
   display: flex;
   align-items: center;
@@ -1698,24 +1716,222 @@ select.form-input:disabled {
   gap: 24px;
 }
 
-.flashcard-wrapper {
-  perspective: 1000px;
+.revision-sub-bar {
+  display: none;
+}
+
+.revision-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.revision-nav-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.revision-nav-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.revision-grading-box {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+
+.revision-grading-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.revision-grading-grid .notion-btn {
+  font-size: 0.82rem;
+}
+
+.flashcard-stage {
+  position: relative;
   width: 100%;
   height: 350px;
+}
+
+.flashcard-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1000px;
   cursor: pointer;
   outline: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.26s ease;
+  will-change: transform, opacity;
+}
+
+.flashcard-wrapper.outgoing-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.flashcard-wrapper.outgoing-card .flashcard-text,
+.flashcard-wrapper.outgoing-card .flashcard-side-label,
+.flashcard-wrapper.outgoing-card .flashcard-tags-badge,
+.flashcard-wrapper.outgoing-card img {
+  opacity: 0.42 !important;
+  transition: opacity 0.15s ease-out;
+}
+
+.flashcard-wrapper.incoming-card {
+  position: relative;
+  z-index: 5;
+}
+
+/* Graded Exit Animation (Card flies left with dynamic tilt & scale, fading swiftly) */
+.flashcard-wrapper.anim-grade-out {
+  animation: animGradeOut 0.42s cubic-bezier(0.35, 0, 0.65, 0.5) forwards;
+  pointer-events: none;
+}
+
+@keyframes animGradeOut {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 0.85;
+  }
+  35% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(-120%) rotate(-10deg) scale(0.88);
+    opacity: 0;
+  }
+}
+
+/* Graded Entrance Animation (Physics-based spring arrival with gentle overshoot, slightly faster) */
+.flashcard-wrapper.anim-grade-in {
+  animation: animGradeIn 0.44s cubic-bezier(0.18, 1, 0.32, 1) forwards;
+}
+
+@keyframes animGradeIn {
+  0% {
+    transform: translateX(85%) rotate(7deg) scale(0.9);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(-2.5%) rotate(-0.9deg) scale(1.015);
+    opacity: 1;
+  }
+  82% {
+    transform: translateX(0.6%) rotate(0.2deg) scale(0.998);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Browse Next (Natural spring slide in from right) */
+.flashcard-wrapper.anim-slide-left-out {
+  animation: animSlideLeftOut 0.38s cubic-bezier(0.35, 0, 0.65, 0.5) forwards;
+  pointer-events: none;
+}
+
+@keyframes animSlideLeftOut {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 0.85;
+  }
+  35% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(-105%) scale(0.94);
+    opacity: 0;
+  }
+}
+
+.flashcard-wrapper.anim-slide-left-in {
+  animation: animSlideLeftIn 0.42s cubic-bezier(0.18, 1, 0.32, 1) forwards;
+}
+
+@keyframes animSlideLeftIn {
+  0% {
+    transform: translateX(80%) scale(0.94);
+    opacity: 0;
+  }
+  68% {
+    transform: translateX(-2%) scale(1.012);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Browse Prev (Natural spring slide in from left) */
+.flashcard-wrapper.anim-slide-right-out {
+  animation: animSlideRightOut 0.38s cubic-bezier(0.35, 0, 0.65, 0.5) forwards;
+  pointer-events: none;
+}
+
+@keyframes animSlideRightOut {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 0.85;
+  }
+  35% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateX(105%) scale(0.94);
+    opacity: 0;
+  }
+}
+
+.flashcard-wrapper.anim-slide-right-in {
+  animation: animSlideRightIn 0.42s cubic-bezier(0.18, 1, 0.32, 1) forwards;
+}
+
+@keyframes animSlideRightIn {
+  0% {
+    transform: translateX(-80%) scale(0.94);
+    opacity: 0;
+  }
+  68% {
+    transform: translateX(2%) scale(1.012);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
 }
 
 .flashcard-inner {
   position: relative;
   width: 100%;
   height: 100%;
-  transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
   outline: none;
 }
 
@@ -1725,9 +1941,11 @@ select.form-input:disabled {
 
 .flashcard-face {
   position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   border-radius: 12px;
   border: 1px solid var(--border-color);
   display: flex;
@@ -1745,14 +1963,29 @@ select.form-input:disabled {
   -webkit-tap-highlight-color: transparent;
 }
 
+.flashcard-face * {
+  pointer-events: none;
+}
+
 .flashcard-face.front {
   color: var(--text-primary);
+  transform: rotateY(0deg);
+  z-index: 2;
 }
 
 .flashcard-face.back {
   transform: rotateY(180deg);
   background-color: var(--bg-primary);
   border-color: var(--border-strong);
+  z-index: 1;
+}
+
+.flashcard-wrapper.flipped .flashcard-face.front {
+  z-index: 1;
+}
+
+.flashcard-wrapper.flipped .flashcard-face.back {
+  z-index: 2;
 }
 
 .flashcard-side-label {
@@ -2017,9 +2250,21 @@ select.form-input:disabled {
   }
 
   .top-search-btn {
-    min-width: 40px;
+    min-width: 38px;
+    min-height: 38px;
+    height: 38px;
     padding: 8px;
     justify-content: center;
+    border-radius: 8px;
+  }
+
+  .workspace-quick-scan-btn {
+    min-width: 38px;
+    min-height: 38px;
+    height: 38px;
+    padding: 8px !important;
+    justify-content: center;
+    border-radius: 8px;
   }
 
   .top-search-placeholder {
@@ -2110,6 +2355,106 @@ select.form-input:disabled {
 
   .workspace-quick-scan-label {
     display: none;
+  }
+
+  /* Hide folder and deck count badges on phone to prevent line wrapping */
+  .folder-node-count-badge,
+  .subject-node-count-badge {
+    display: none !important;
+  }
+
+  /* Revision page mobile scroll-less layout */
+  .workspace-content:has(.revision-container) {
+    padding: 10px 14px !important;
+    gap: 8px !important;
+  }
+
+  .revision-desktop-header,
+  .revision-desktop-divider {
+    display: none !important;
+  }
+
+  .revision-container {
+    gap: 8px !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .revision-sub-bar {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 0 2px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .revision-card-counter {
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+  }
+
+  .revision-exit-btn {
+    padding: 4px 12px !important;
+    font-size: 0.8rem !important;
+    min-height: 30px !important;
+    border-radius: 6px !important;
+  }
+
+  .flashcard-stage {
+    height: clamp(260px, 48vh, 380px) !important;
+    width: 100% !important;
+    margin-bottom: 0 !important;
+  }
+
+  .flashcard-wrapper {
+    height: 100% !important;
+    margin-bottom: 0 !important;
+  }
+
+  .flashcard-face {
+    padding: 24px 18px !important;
+  }
+
+  .flashcard-text {
+    font-size: 1.32rem !important;
+    max-height: 85% !important;
+  }
+
+  .flashcard-side-label,
+  .flashcard-tags-badge {
+    top: 12px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .revision-grading-box {
+    border-top: 1px solid var(--border-color) !important;
+    padding-top: 8px !important;
+    margin-top: 0 !important;
+    width: 100% !important;
+  }
+
+  .revision-grading-title {
+    display: none !important;
+  }
+
+  .revision-grading-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .revision-grading-grid .notion-btn {
+    min-height: 48px !important;
+    font-size: 0.9rem !important;
+    padding: 10px 4px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+  }
+
+  .revision-ai-box {
+    padding: 10px 12px !important;
   }
 }
 

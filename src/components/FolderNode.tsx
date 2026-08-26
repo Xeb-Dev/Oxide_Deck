@@ -104,10 +104,11 @@ export default function FolderNode({
           backgroundColor: "var(--bg-hover)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "1.5rem" }}>{folder.icon || "📁"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <span style={{ fontSize: "1.5rem", flexShrink: 0 }}>{folder.icon || "📁"}</span>
           <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>{folder.name}</span>
           <span
+            className="folder-node-count-badge"
             style={{
               fontSize: "0.8rem",
               color: "var(--text-muted)",
@@ -115,6 +116,7 @@ export default function FolderNode({
               padding: "2px 8px",
               borderRadius: "10px",
               border: "1px solid var(--border-color)",
+              whiteSpace: "nowrap",
             }}
           >
             {childFolders.length} folder{childFolders.length !== 1 ? "s" : ""} · {folderDecks.length} deck

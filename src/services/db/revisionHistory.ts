@@ -21,6 +21,13 @@ export async function addRevisionHistory(
   }, 50);
 }
 
+function toLocalDateString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function getStats(): Promise<Stats> {
   const db = await getDB();
 
@@ -30,20 +37,24 @@ export async function getStats(): Promise<Stats> {
   const avgRes = await db.select<{ avg_score: number | null }[]>("SELECT AVG(score) as avg_score FROM revision_history");
   const averageScore = Math.round(avgRes[0]?.avg_score || 0);
 
+  const todayStr = toLocalDateString(new Date());
   const todayRes = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now')"
+    "SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at, 'localtime') = $1",
+    [todayStr]
   );
   const cardsReviewedToday = todayRes[0]?.count || 0;
 
-  // Weekly breakdown (last 7 calendar days)
+  // Weekly breakdown (last 7 calendar days for velocity chart)
   const weeklyProgress = [];
   for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dayStr = toLocalDateString(d);
     const dayRes = await db.select<{ count: number; avg_score: number | null }[]>(
-      `SELECT COUNT(*) as count, AVG(score) as avg_score FROM revision_history WHERE date(reviewed_at) = date('now', '-${i} days')`
+      `SELECT COUNT(*) as count, AVG(score) as avg_score FROM revision_history WHERE date(reviewed_at, 'localtime') = $1`,
+      [dayStr]
     );
-    const dateStr = new Date();
-    dateStr.setDate(dateStr.getDate() - i);
-    const dayName = dateStr.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
     weeklyProgress.push({
       day: dayName,
       count: dayRes[0]?.count || 0,
@@ -78,6 +89,60 @@ export async function getStats(): Promise<Stats> {
     0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat',
   };
 
+  // 7-Day Consistency Matrix for current Monday-Sunday calendar week
+  const now = new Date();
+  const currentDayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 1 = Tue, ..., 6 = Sun
+  const mondayDate = new Date(now);
+  mondayDate.setDate(now.getDate() - currentDayOfWeek);
+  mondayDate.setHours(0, 0, 0, 0);
+
+  const WEEK_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+  const WEEK_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const currentWeekMatrix: Stats['currentWeekMatrix'] = [];
+
+  for (let idx = 0; idx < 7; idx++) {
+    const dayDate = new Date(mondayDate);
+    dayDate.setDate(mondayDate.getDate() + idx);
+    const dayStr = toLocalDateString(dayDate);
+    const dayKey = WEEK_KEYS[idx];
+    const isToday = idx === currentDayOfWeek;
+    const isPast = idx < currentDayOfWeek;
+    const isFuture = idx > currentDayOfWeek;
+
+    const dayActs = await db.select<{ flashcards: number; quizzes: number; teaches: number }[]>(
+      `SELECT 
+        COUNT(CASE WHEN type = 'flashcard' OR type IS NULL THEN 1 END) as flashcards,
+        COUNT(CASE WHEN type = 'quiz' OR type = 'mock' THEN 1 END) as quizzes,
+        COUNT(CASE WHEN type = 'teach' THEN 1 END) as teaches
+       FROM revision_history 
+       WHERE date(reviewed_at, 'localtime') = $1`,
+      [dayStr]
+    );
+    const fc = dayActs[0]?.flashcards || 0;
+    const qz = dayActs[0]?.quizzes || 0;
+    const tc = dayActs[0]?.teaches || 0;
+    const totalCount = fc + qz + tc;
+
+    const hasMetQuiz = streakAllowQuizzes && qz > 0;
+    const hasMetTeach = streakAllowTeachMode && tc > 0;
+    
+    // For today, evaluate against current configured target; for past days, evaluate active study
+    const isCompleted = isToday 
+      ? (fc >= streakMinCards || hasMetQuiz || hasMetTeach)
+      : (fc > 0 || hasMetQuiz || hasMetTeach);
+
+    currentWeekMatrix.push({
+      dayKey,
+      dayLabel: WEEK_LABELS[idx],
+      fullDate: dayStr,
+      isToday,
+      isPast,
+      isFuture,
+      isCompleted,
+      count: totalCount,
+    });
+  }
+
   // Calculate streak based on daily activities, minimum conditions, and active streak days
   let streakDays = 0;
   let checkDayOffset = 0;
@@ -89,54 +154,55 @@ export async function getStats(): Promise<Stats> {
   while (checkDayOffset < MAX_CHECK_DAYS) {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - checkDayOffset);
+    const targetDateStr = toLocalDateString(targetDate);
     const dayKey = DAY_INDEX_MAP[targetDate.getDay()];
     const isRequiredDay = streakActiveDays[dayKey] ?? true;
 
     // Fetch card and quiz activities for this day
-    const flashcardRes = await db.select<{ count: number }[]>(
-      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND (type = 'flashcard' OR type IS NULL)`
+    const dayActs = await db.select<{ flashcards: number; quizzes: number; teaches: number }[]>(
+      `SELECT 
+        COUNT(CASE WHEN type = 'flashcard' OR type IS NULL THEN 1 END) as flashcards,
+        COUNT(CASE WHEN type = 'quiz' OR type = 'mock' THEN 1 END) as quizzes,
+        COUNT(CASE WHEN type = 'teach' THEN 1 END) as teaches
+       FROM revision_history 
+       WHERE date(reviewed_at, 'localtime') = $1`,
+      [targetDateStr]
     );
-    const flashcardCount = flashcardRes[0]?.count || 0;
+    const flashcardCount = dayActs[0]?.flashcards || 0;
+    const quizCount = dayActs[0]?.quizzes || 0;
+    const teachCount = dayActs[0]?.teaches || 0;
 
-    const quizRes = await db.select<{ count: number }[]>(
-      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND (type = 'quiz' OR type = 'mock')`
-    );
-    const quizCount = quizRes[0]?.count || 0;
-
-    const teachRes = await db.select<{ count: number }[]>(
-      `SELECT COUNT(*) as count FROM revision_history WHERE date(reviewed_at) = date('now', '-${checkDayOffset} days') AND type = 'teach'`
-    );
-    const teachCount = teachRes[0]?.count || 0;
-
-    const hasMetCards = flashcardCount >= streakMinCards;
     const hasMetQuiz = streakAllowQuizzes && quizCount > 0;
     const hasMetTeach = streakAllowTeachMode && teachCount > 0;
-    const isCompleted = hasMetCards || hasMetQuiz || hasMetTeach;
 
     if (checkDayOffset === 0) {
-      streakProgressToday = flashcardCount + (hasMetQuiz || hasMetTeach ? streakMinCards : 0);
-      streakConditionMetToday = isCompleted;
-    }
+      // Today: evaluate against user's active intensity setting
+      const hasMetCards = flashcardCount >= streakMinCards;
+      const isCompletedToday = hasMetCards || hasMetQuiz || hasMetTeach;
 
-    if (isCompleted) {
-      streakDays++;
+      streakProgressToday = flashcardCount + (hasMetQuiz || hasMetTeach ? streakMinCards : 0);
+      streakConditionMetToday = isCompletedToday;
+
+      if (isCompletedToday) {
+        streakDays++;
+      }
       checkDayOffset++;
     } else {
-      // If user did NOT meet streak condition on this day:
-      // 1. Today (offset 0) has not met goal yet -> allow checking yesterday without breaking streak yet
-      if (checkDayOffset === 0) {
-        checkDayOffset++;
-        continue;
-      }
+      // Past days: preserve earned streaks as long as study was active on required days
+      const isCompletedPast = (flashcardCount > 0) || hasMetQuiz || hasMetTeach;
 
-      // 2. Configured Rest Day (e.g. Saturday or Sunday) -> forgive the day, don't break streak!
-      if (!isRequiredDay) {
+      if (isCompletedPast) {
+        streakDays++;
         checkDayOffset++;
-        continue;
+      } else {
+        // Configured Rest Day -> forgive the day and keep checking earlier days
+        if (!isRequiredDay) {
+          checkDayOffset++;
+          continue;
+        }
+        // Missed study day on a required day -> streak ends!
+        break;
       }
-
-      // 3. Required study day with condition unmet -> streak breaks!
-      break;
     }
   }
 
@@ -162,5 +228,6 @@ export async function getStats(): Promise<Stats> {
     streakProgressToday,
     streakConditionMetToday,
     weeklyProgress,
+    currentWeekMatrix,
   };
 }

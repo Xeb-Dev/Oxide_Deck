@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  getFlashcards, getDueFlashcards, reviewFlashcard, addRevisionHistory,
+  getFlashcards, getDueFlashcards, getAllFlashcards, reviewFlashcard, addRevisionHistory,
   Flashcard, Deck, getDecks
 } from "../services/db";
 import { Rating, scoreToRating } from "../services/fsrs";
@@ -9,7 +9,7 @@ import {
   getLearningPersonalities, LearningPersonality
 } from "../services/llm";
 import { 
-  Sparkles, RotateCcw, AlertCircle, Loader2, Award
+  Sparkles, RotateCcw, AlertCircle, Loader2, Award, ChevronLeft, ChevronRight
 } from "lucide-react";
 import MathText from "../components/MathText";
 import StatusBanner from "../components/StatusBanner";
@@ -36,6 +36,10 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [aiValidation, setAiValidation] = useState<ValidationResult | null>(null);
   const [validatingAnswer, setValidatingAnswer] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [animClass, setAnimClass] = useState<string>("");
+  const [outgoingCard, setOutgoingCard] = useState<{ card: Flashcard; isFlipped: boolean; animClass: string } | null>(null);
+
+  const isTransitioningRef = useRef(false);
 
   // Quiz states
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -58,9 +62,8 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   }, []);
 
   useEffect(() => {
-    if (currentNav.deckId) {
-      loadDeckAndCards(currentNav.deckId);
-    }
+    const targetDeckId = currentNav.deckId || 'all';
+    loadDeckAndCards(targetDeckId);
   }, [currentNav.deckId, currentNav.revisionMode]);
 
   useEffect(() => {
@@ -92,16 +95,51 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     try {
       setLoading(true);
       setErrorBanner(null);
+      setCurrentIndex(0);
+      setIsFlipped(false);
+      setSessionCompleted(false);
+      setAnimClass("");
+      setOutgoingCard(null);
+      isTransitioningRef.current = false;
+
+      const mode = currentNav.revisionMode || 'flashcard';
+      setRevisionMode(mode as any);
+
+      // Global Daily Review across ALL decks
+      if (deckId === 'all') {
+        setDeck({
+          id: "all",
+          name: "Daily Review (All Due Decks)",
+          icon: "⚡",
+          description: "All cards due for spaced repetition review across your entire library",
+          folder_id: null,
+          created_at: new Date().toISOString()
+        });
+
+        const dueCards = await getDueFlashcards();
+        if (dueCards.length > 0) {
+          setCards(dueCards);
+          if (mode === 'quiz') {
+            generateAIQuiz(dueCards);
+          }
+        } else {
+          // If no cards are due today, fall back to all cards
+          const allCards = await getAllFlashcards();
+          setCards(allCards);
+          if (mode === 'quiz') {
+            generateAIQuiz(allCards);
+          }
+        }
+        return;
+      }
+
       const decks = await getDecks();
       const targetDeck = decks.find(x => x.id === deckId);
       if (targetDeck) {
         setDeck(targetDeck);
       }
 
-      const mode = currentNav.revisionMode || 'flashcard';
-      setRevisionMode(mode as any);
-
-      // Load cards
+      // Load cards for single deck
       let allCards = await getFlashcards(deckId);
       setCards(allCards);
       
@@ -127,7 +165,6 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     if (deckCards.length === 0) return;
     try {
       setLoading(true);
-      // Generate up to 5 questions based on deck size
       const count = Math.min(deckCards.length, 5);
       const generated = await generateQuizFromFlashcards(deckCards, count);
       setQuizQuestions(generated);
@@ -142,27 +179,210 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     }
   };
 
-  // FLASHCARD FSRS GRADING
+  // BROWSE PREVIOUS CARD (Simultaneous outgoing slide right & incoming slide left)
+  const handleBrowsePrev = useCallback(() => {
+    if (isTransitioningRef.current || currentIndex <= 0) return;
+    const currentCard = cards[currentIndex];
+    isTransitioningRef.current = true;
+
+    // Set outgoing card
+    setOutgoingCard({
+      card: currentCard,
+      isFlipped,
+      animClass: "anim-slide-right-out"
+    });
+
+    // Advance to previous card simultaneously with incoming slide in
+    setCurrentIndex(prev => prev - 1);
+    setIsFlipped(false);
+    setUserTypedAnswer("");
+    setAiValidation(null);
+    setAnimClass("anim-slide-right-in");
+
+    setTimeout(() => {
+      setOutgoingCard(null);
+      setAnimClass("");
+      isTransitioningRef.current = false;
+    }, 420);
+  }, [currentIndex, cards, isFlipped]);
+
+  // BROWSE NEXT CARD (Simultaneous outgoing slide left & incoming slide right)
+  const handleBrowseNext = useCallback(() => {
+    if (isTransitioningRef.current || currentIndex >= cards.length - 1) return;
+    const currentCard = cards[currentIndex];
+    isTransitioningRef.current = true;
+
+    // Set outgoing card
+    setOutgoingCard({
+      card: currentCard,
+      isFlipped,
+      animClass: "anim-slide-left-out"
+    });
+
+    // Advance to next card simultaneously with incoming slide in
+    setCurrentIndex(prev => prev + 1);
+    setIsFlipped(false);
+    setUserTypedAnswer("");
+    setAiValidation(null);
+    setAnimClass("anim-slide-left-in");
+
+    setTimeout(() => {
+      setOutgoingCard(null);
+      setAnimClass("");
+      isTransitioningRef.current = false;
+    }, 420);
+  }, [currentIndex, cards, isFlipped]);
+
+  // FLASHCARD FSRS GRADING (Simultaneous outgoing fly-out left & incoming spring fly-in right)
   const handleCardGrade = async (rating: Rating) => {
-    if (cards.length === 0) return;
-    const card = cards[currentIndex];
-    
+    if (cards.length === 0 || isTransitioningRef.current) return;
+    const currentCard = cards[currentIndex];
+    isTransitioningRef.current = true;
+
     try {
-      await reviewFlashcard(card.id, rating);
-      
-      // Move to next card
-      setIsFlipped(false);
-      setUserTypedAnswer("");
-      setAiValidation(null);
+      // 1. Write to database
+      reviewFlashcard(currentCard.id, rating).catch(console.error);
 
       if (currentIndex + 1 < cards.length) {
+        // Set outgoing card flying left
+        setOutgoingCard({
+          card: currentCard,
+          isFlipped,
+          animClass: "anim-grade-out"
+        });
+
+        // Advance to next card simultaneously with spring fly-in from right
         setCurrentIndex(prev => prev + 1);
+        setIsFlipped(false);
+        setUserTypedAnswer("");
+        setAiValidation(null);
+        setAnimClass("anim-grade-in");
+
+        setTimeout(() => {
+          setOutgoingCard(null);
+          setAnimClass("");
+          isTransitioningRef.current = false;
+        }, 440);
       } else {
-        setSessionCompleted(true);
+        // Last card in deck
+        setOutgoingCard({
+          card: currentCard,
+          isFlipped,
+          animClass: "anim-grade-out"
+        });
+
+        setTimeout(() => {
+          setOutgoingCard(null);
+          setSessionCompleted(true);
+          setAnimClass("");
+          isTransitioningRef.current = false;
+        }, 400);
       }
     } catch (e) {
       console.error(e);
+      setOutgoingCard(null);
+      setAnimClass("");
+      isTransitioningRef.current = false;
     }
+  };
+
+  // Keyboard navigation shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+        return;
+      }
+
+      if (revisionMode === 'flashcard' && !sessionCompleted) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          handleBrowsePrev();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleBrowseNext();
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          setIsFlipped(prev => !prev);
+        } else if (e.key === '1') {
+          e.preventDefault();
+          handleCardGrade(Rating.Again);
+        } else if (e.key === '2') {
+          e.preventDefault();
+          handleCardGrade(Rating.Hard);
+        } else if (e.key === '3') {
+          e.preventDefault();
+          handleCardGrade(Rating.Good);
+        } else if (e.key === '4') {
+          e.preventDefault();
+          handleCardGrade(Rating.Easy);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, cards.length, revisionMode, sessionCompleted, handleBrowsePrev, handleBrowseNext]);
+
+  // Touch handlers for swipe browsing & reliable tap-to-flip
+  const touchStartPos = useRef<{ x: number; y: number; time: number } | null>(null);
+  const wasSwipeOrMove = useRef<boolean>(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchStartPos.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now()
+      };
+      wasSwipeOrMove.current = false;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPos.current) return;
+    const deltaX = e.touches[0].clientX - touchStartPos.current.x;
+    const deltaY = e.touches[0].clientY - touchStartPos.current.y;
+    // Mark as moved if finger travels more than 10px in any direction
+    if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+      wasSwipeOrMove.current = true;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartPos.current || isTransitioningRef.current) {
+      touchStartPos.current = null;
+      return;
+    }
+    const endX = e.changedTouches[0].clientX;
+    const endY = e.changedTouches[0].clientY;
+    const deltaX = endX - touchStartPos.current.x;
+    const deltaY = endY - touchStartPos.current.y;
+    touchStartPos.current = null;
+
+    // Horizontal swipe gesture check (> 38px and predominantly horizontal)
+    if (Math.abs(deltaX) > 38 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1) {
+      wasSwipeOrMove.current = true;
+      if (deltaX < 0) {
+        handleBrowseNext();
+      } else {
+        handleBrowsePrev();
+      }
+      return;
+    }
+
+    // Notice: We don't flip in onTouchEnd to prevent double-toggling with subsequent onClick.
+    // The browser's native onClick handler will handle the flip cleanly if wasSwipeOrMove is false.
+  };
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isTransitioningRef.current) return;
+    if (wasSwipeOrMove.current) {
+      wasSwipeOrMove.current = false;
+      return;
+    }
+    setIsFlipped(prev => !prev);
   };
 
   const handleSubmitTeachAnswer = async () => {
@@ -335,13 +555,13 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
         <Award size={64} color="var(--success-color)" />
         <h1 className="page-title" style={{ justifyContent: "center" }}>Revision Session Complete!</h1>
         <p className="sub-description">
-          Excellent work. You have reviewed all scheduled cards for the deck <strong>{deck?.name}</strong>.
+          Excellent work. You have reviewed all scheduled cards for {deck?.id === 'all' ? <strong>Daily Review (All Due Cards)</strong> : <>the deck <strong>{deck?.name}</strong></>}.
         </p>
         <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
           <button className="notion-btn" onClick={() => setCurrentNav({ page: 'dashboard' })}>
             Back to Dashboard
           </button>
-          <button className="notion-btn secondary" onClick={() => loadDeckAndCards(currentNav.deckId!)}>
+          <button className="notion-btn secondary" onClick={() => loadDeckAndCards(currentNav.deckId || 'all')}>
             <RotateCcw size={14} /> Restart Session
           </button>
         </div>
@@ -482,6 +702,72 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const currentCard = cards[currentIndex];
   const selectedPersona = availablePersonalities.find(persona => persona.id === selectedPersonaId);
 
+  const renderCardFace = (card: Flashcard, flipped: boolean, isOutgoing: boolean, animClassName: string) => {
+    return (
+      <div 
+        key={isOutgoing ? `outgoing-${card.id}` : `current-${card.id}`}
+        className={`flashcard-wrapper ${flipped ? 'flipped' : ''} ${animClassName} ${isOutgoing ? 'outgoing-card' : 'incoming-card'}`}
+        onTouchStart={isOutgoing ? undefined : handleTouchStart}
+        onTouchMove={isOutgoing ? undefined : handleTouchMove}
+        onTouchEnd={isOutgoing ? undefined : handleTouchEnd}
+        onClick={isOutgoing ? undefined : handleCardClick}
+      >
+        <div className="flashcard-inner">
+          
+          {/* Front card face */}
+          <div className="flashcard-face front">
+            <span className="flashcard-side-label">Front (Question)</span>
+            {((card as any).deck_name || card.tags) && (
+              <span className="flashcard-tags-badge">
+                {(card as any).deck_name ? `📁 ${(card as any).deck_name}` : card.tags?.split(',')[0]}
+              </span>
+            )}
+            
+            {/* Front Image rendering */}
+            {(card.front_image_url || card.image_url) && (
+              <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
+                <img
+                  src={card.front_image_url || card.image_url!}
+                  alt="Front Card Image"
+                  style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
+                />
+              </div>
+            )}
+
+            {card.front && card.front !== "(Image)" && (
+              <MathText className="flashcard-text">{card.front}</MathText>
+            )}
+
+            <div style={{ position: "absolute", bottom: "12px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              Click card to flip manually
+            </div>
+          </div>
+
+          {/* Back card face */}
+          <div className="flashcard-face back">
+            <span className="flashcard-side-label">Back (Reference Answer)</span>
+            
+            {/* Back Image rendering */}
+            {card.back_image_url && (
+              <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
+                <img
+                  src={card.back_image_url}
+                  alt="Back Card Image"
+                  style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
+                />
+              </div>
+            )}
+
+            {card.back && card.back !== "(Image)" && (
+              <MathText className="flashcard-text">{card.back}</MathText>
+            )}
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       {errorBanner && (
@@ -491,96 +777,109 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           onDismiss={() => setErrorBanner(null)}
         />
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+
+      {/* Desktop Header */}
+      <div className="revision-desktop-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <span className="page-emoji">🧠</span>
           <h1 className="page-title">{revisionMode === 'teach' ? 'Teach the AI' : 'Reviewing'}: {deck?.name}</h1>
-          <p className="sub-description">
-            {revisionMode === 'teach'
-              ? `Explain the card to ${selectedPersona?.name || 'your chosen persona'} and let the AI evaluate your understanding.`
-              : `Card ${currentIndex + 1} of ${cards.length} (${cards.length - currentIndex} remaining)`}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+            {revisionMode === 'flashcard' && (
+              <button 
+                className="theme-toggle-btn" 
+                style={{ width: "24px", height: "24px", padding: "2px" }}
+                onClick={handleBrowsePrev}
+                disabled={currentIndex === 0}
+                title="Previous card (Left Arrow / Swipe Right)"
+                aria-label="Previous card"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            <p className="sub-description" style={{ margin: 0 }}>
+              {revisionMode === 'teach'
+                ? `Explain the card to ${selectedPersona?.name || 'your chosen persona'} and let the AI evaluate your understanding.`
+                : `Card ${currentIndex + 1} of ${cards.length} (${cards.length - currentIndex} remaining)`}
+            </p>
+            {revisionMode === 'flashcard' && (
+              <button 
+                className="theme-toggle-btn" 
+                style={{ width: "24px", height: "24px", padding: "2px" }}
+                onClick={handleBrowseNext}
+                disabled={currentIndex >= cards.length - 1}
+                title="Next card (Right Arrow / Swipe Left)"
+                aria-label="Next card"
+              >
+                <ChevronRight size={14} />
+              </button>
+            )}
+          </div>
         </div>
         <button className="notion-btn secondary" onClick={() => setCurrentNav({ page: 'dashboard' })}>
           Exit Session
         </button>
       </div>
 
-      <div className="divider" />
+      <div className="divider revision-desktop-divider" />
 
       <div className="revision-container">
         
-        {/* Flipping card component */}
-        <div 
-          className={`flashcard-wrapper ${isFlipped ? 'flipped' : ''}`}
-          onClick={() => setIsFlipped(!isFlipped)}
-        >
-          <div className="flashcard-inner">
-            
-            {/* Front card face */}
-            <div className="flashcard-face front">
-              <span className="flashcard-side-label">Front (Question)</span>
-              {currentCard.tags && (
-                <span className="flashcard-tags-badge">{currentCard.tags.split(',')[0]}</span>
-              )}
-              
-              {/* Front Image rendering */}
-              {(currentCard.front_image_url || currentCard.image_url) && (
-                <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
-                  <img
-                    src={currentCard.front_image_url || currentCard.image_url!}
-                    alt="Front Card Image"
-                    style={{ maxWidth: "100%", maxHeight: "240px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
-                  />
-                </div>
-              )}
-
-              {currentCard.front && currentCard.front !== "(Image)" && (
-                <MathText className="flashcard-text">{currentCard.front}</MathText>
-              )}
-
-              <div style={{ position: "absolute", bottom: "16px", fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                Click card to flip manually
-              </div>
-            </div>
-
-            {/* Back card face */}
-            <div className="flashcard-face back">
-              <span className="flashcard-side-label">Back (Reference Answer)</span>
-              
-              {/* Back Image rendering */}
-              {currentCard.back_image_url && (
-                <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
-                  <img
-                    src={currentCard.back_image_url}
-                    alt="Back Card Image"
-                    style={{ maxWidth: "100%", maxHeight: "240px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
-                  />
-                </div>
-              )}
-
-              {currentCard.back && currentCard.back !== "(Image)" && (
-                <MathText className="flashcard-text">{currentCard.back}</MathText>
-              )}
-            </div>
-
+        {/* Mobile Info & Exit Row (placed tight & close right above the card on phones) */}
+        <div className="revision-sub-bar">
+          <div className="revision-nav-controls" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button 
+              className="theme-toggle-btn revision-nav-arrow" 
+              onClick={(e) => { e.stopPropagation(); handleBrowsePrev(); }}
+              disabled={currentIndex === 0}
+              title="Previous card (Swipe Right / Left Arrow)"
+              aria-label="Previous card"
+              style={{ width: "28px", height: "28px", padding: "4px" }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="revision-card-counter">
+              Card {currentIndex + 1} of {cards.length}
+            </span>
+            <button 
+              className="theme-toggle-btn revision-nav-arrow" 
+              onClick={(e) => { e.stopPropagation(); handleBrowseNext(); }}
+              disabled={currentIndex >= cards.length - 1}
+              title="Next card (Swipe Left / Right Arrow)"
+              aria-label="Next card"
+              style={{ width: "28px", height: "28px", padding: "4px" }}
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
+          <button 
+            className="notion-btn secondary revision-exit-btn" 
+            onClick={() => setCurrentNav({ page: 'dashboard' })}
+          >
+            Exit
+          </button>
+        </div>
+
+        {/* Flashcard Stage container (holds outgoing and incoming cards simultaneously) */}
+        <div className="flashcard-stage">
+          {outgoingCard && renderCardFace(outgoingCard.card, outgoingCard.isFlipped, true, outgoingCard.animClass)}
+          {currentCard && renderCardFace(currentCard, isFlipped, false, animClass)}
         </div>
 
         {/* User response actions block */}
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
           
           {/* AI Validation Form (User types answer first) */}
           {revisionMode !== 'teach' && !aiValidation && (
             <div 
+              className="revision-ai-box"
               style={{ 
                 border: "1px solid var(--border-color)", 
                 borderRadius: "8px", 
-                padding: "16px", 
+                padding: "12px 16px", 
                 backgroundColor: "var(--bg-secondary)",
                 display: "flex",
                 flexDirection: "column",
-                gap: "10px"
+                gap: "8px"
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
@@ -590,7 +889,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
               </div>
               <textarea
                 className="notion-input"
-                rows={4}
+                rows={2}
                 value={userTypedAnswer}
                 onChange={(e) => setUserTypedAnswer(e.target.value)}
                 placeholder="Type your explanation or definition..."
@@ -710,11 +1009,11 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
               style={{ 
                 border: "1px solid var(--border-strong)", 
                 borderRadius: "8px", 
-                padding: "16px", 
+                padding: "14px", 
                 backgroundColor: "var(--accent-light)",
                 display: "flex",
                 flexDirection: "column",
-                gap: "12px"
+                gap: "10px"
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -744,35 +1043,35 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           )}
 
           {/* Manual self-grading triggers */}
-          <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "16px" }}>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>
+          <div className="revision-grading-box">
+            <span className="revision-grading-title" style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>
               Spaced Repetition Self-Grading
             </span>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+            <div className="revision-grading-grid">
               <button 
                 className="notion-btn secondary" 
-                style={{ color: "var(--danger-color)", fontSize: "0.82rem" }} 
+                style={{ color: "var(--danger-color)" }} 
                 onClick={() => handleCardGrade(Rating.Again)}
               >
                 Again
               </button>
               <button 
                 className="notion-btn secondary" 
-                style={{ color: "var(--warning-color)", fontSize: "0.82rem" }} 
+                style={{ color: "var(--warning-color)" }} 
                 onClick={() => handleCardGrade(Rating.Hard)}
               >
                 Hard
               </button>
               <button 
                 className="notion-btn secondary" 
-                style={{ color: "var(--accent-color)", fontSize: "0.82rem" }} 
+                style={{ color: "var(--accent-color)" }} 
                 onClick={() => handleCardGrade(Rating.Good)}
               >
                 Good
               </button>
               <button 
                 className="notion-btn secondary" 
-                style={{ color: "var(--success-color)", fontSize: "0.82rem" }} 
+                style={{ color: "var(--success-color)" }} 
                 onClick={() => handleCardGrade(Rating.Easy)}
               >
                 Easy

@@ -17,6 +17,7 @@ interface NavigationState {
   subjectId?: string;
   revisionMode?: 'flashcard' | 'quiz' | 'teach';
   openModal?: 'subject' | 'folder' | 'deck';
+  createTab?: 'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf';
 }
 
 import ToastBanner from "./components/ToastBanner";
@@ -74,7 +75,12 @@ function App() {
           />
         );
       case 'create':
-        return <CreateFlashcard onSidebarRefresh={triggerSidebarRefresh} />;
+        return (
+          <CreateFlashcard 
+            currentNav={currentNav} 
+            onSidebarRefresh={triggerSidebarRefresh} 
+          />
+        );
       case 'revision':
         return <Revision currentNav={currentNav} setCurrentNav={handleNavChange} />;
       case 'tests':

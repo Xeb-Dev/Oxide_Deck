@@ -32,32 +32,35 @@ import { PdfViewer, PdfSnippet } from "../components/PDFViewer";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 
 interface StatusState {
-
   message: string;
-
   variant: StatusVariant;
-
 }
 
-
-
 interface CreateFlashcardProps {
-
+  currentNav?: {
+    page: string;
+    createTab?: 'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf';
+  };
   onSidebarRefresh?: () => void;
-
 }
 
 type ReviewFlashcard = GeneratedFlashcard | PdfGeneratedFlashcard;
 
-
-
-export default function CreateFlashcard({ onSidebarRefresh }: CreateFlashcardProps) {
+export default function CreateFlashcard({ currentNav, onSidebarRefresh }: CreateFlashcardProps) {
 
   const [decks, setDecks] = useState<Deck[]>([]);
 
   const [selectedDeckId, setSelectedDeckId] = useState("");
 
-  const [activeTab, setActiveTab] = useState<'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf'>('manual');
+  const [activeTab, setActiveTab] = useState<'manual' | 'ai-text' | 'ai-url' | 'ai-camera' | 'ai-pdf'>(
+    currentNav?.createTab || 'manual'
+  );
+
+  React.useEffect(() => {
+    if (currentNav?.createTab) {
+      setActiveTab(currentNav.createTab);
+    }
+  }, [currentNav?.createTab]);
 
 
   const [loading, setLoading] = useState(false);

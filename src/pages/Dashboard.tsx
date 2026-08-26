@@ -244,32 +244,32 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
               </p>
 
               <div className="bento-hero-actions-row">
-                {dueDecks.length > 0 ? (
+                {totalDueCount > 0 || dueDecks.length > 0 ? (
                   <>
                     <button
                       className="bento-btn bento-btn-hero-action"
                       onClick={() =>
-                        handleStartRevision(dueDecks[0].id, "flashcard")
+                        handleStartRevision("all", "flashcard")
                       }
                     >
                       <Play size={16} fill="currentColor" /> Start Daily Review
-                      ({dueDecks[0].name})
+                      {totalDueCount > 0 ? ` (${totalDueCount} Due)` : ""}
                     </button>
                     <button
                       className="bento-btn bento-btn-hero-secondary"
                       onClick={() =>
-                        handleStartRevision(dueDecks[0].id, "quiz")
+                        handleStartRevision("all", "quiz")
                       }
-                      title="Generate AI Quiz"
+                      title="Generate AI Quiz from Due Cards"
                     >
                       <Zap size={14} /> Quick Quiz
                     </button>
                     <button
                       className="bento-btn bento-btn-hero-secondary"
                       onClick={() =>
-                        handleStartRevision(dueDecks[0].id, "teach")
+                        handleStartRevision("all", "teach")
                       }
-                      title="Teach Concept to AI"
+                      title="Teach Due Cards to AI"
                     >
                       <Bot size={14} /> Teach AI
                     </button>
@@ -352,28 +352,31 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
 
           {/* 7-Day Consistency Matrix */}
           <div className="bento-streak-week-matrix">
-            {["M", "T", "W", "T", "F", "S", "S"].map((dayName, idx) => {
-              const isPast = idx < todayDayIdx;
-              const isToday = idx === todayDayIdx;
-              const isFilled = isPast || (isToday && stats?.streakConditionMetToday);
-
-              return (
-                <div key={idx} className="bento-week-matrix-item">
-                  <div
-                    className={`bento-week-bubble ${isFilled ? "active" : ""
-                      } ${isToday ? "today" : ""}`}
-                  >
-                    {isFilled ? <Flame size={12} /> : null}
-                  </div>
-                  <span
-                    className={`bento-week-matrix-label ${isToday ? "highlight" : ""
-                      }`}
-                  >
-                    {dayName}
-                  </span>
+            {(stats?.currentWeekMatrix || [
+              { dayLabel: "M", isToday: todayDayIdx === 0, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "T", isToday: todayDayIdx === 1, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "W", isToday: todayDayIdx === 2, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "T", isToday: todayDayIdx === 3, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "F", isToday: todayDayIdx === 4, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "S", isToday: todayDayIdx === 5, isCompleted: false, count: 0, fullDate: "" },
+              { dayLabel: "S", isToday: todayDayIdx === 6, isCompleted: false, count: 0, fullDate: "" },
+            ]).map((item, idx) => (
+              <div key={idx} className="bento-week-matrix-item">
+                <div
+                  className={`bento-week-bubble ${item.isCompleted ? "active" : ""
+                    } ${item.isToday ? "today" : ""}`}
+                  title={item.fullDate ? `${item.fullDate}: ${item.count} reviewed` : undefined}
+                >
+                  {item.isCompleted ? <Flame size={12} /> : null}
                 </div>
-              );
-            })}
+                <span
+                  className={`bento-week-matrix-label ${item.isToday ? "highlight" : ""
+                    }`}
+                >
+                  {item.dayLabel}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
