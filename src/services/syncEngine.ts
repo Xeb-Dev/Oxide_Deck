@@ -19,6 +19,7 @@ import {
   downloadSyncPackage,
   getRemoteFileMetadata,
 } from "./webdavService";
+import { logger } from "./logger";
 
 export interface SyncPackage {
   version: "1.0";
@@ -599,6 +600,13 @@ export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<Sy
 
     saveWebDavConfig(config);
 
+    logger.info("WebDAV-Sync", "Bidirectional sync completed successfully", {
+      decks_count: mergedPkg.decks.length,
+      cards_count: mergedPkg.flashcards.length,
+      logs_count: mergedPkg.revision_history.length,
+      tests_count: mergedPkg.tests.length,
+    });
+
     return {
       success: true,
       message: `Sync successful! Synced ${mergedPkg.decks.length} deck(s) and ${mergedPkg.flashcards.length} flashcard(s).`,
@@ -613,7 +621,7 @@ export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<Sy
       },
     };
   } catch (err: any) {
-    console.error("WebDAV Sync Error:", err);
+    logger.error("WebDAV-Sync", "Bidirectional sync encountered an error", err);
     const errText = typeof err === "string" ? err : err?.message || (err ? JSON.stringify(err) : "Unexpected error");
     return {
       success: false,

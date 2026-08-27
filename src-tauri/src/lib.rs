@@ -1,4 +1,5 @@
 mod migrations;
+mod logger;
 
 #[tauri::command]
 async fn fetch_url_html(url: String) -> Result<String, String> {
@@ -165,7 +166,12 @@ pub fn run() {
             proxy_post_request,
             update_widget_data,
             webdav_exec,
-            sync_webdav_workmanager_config
+            sync_webdav_workmanager_config,
+            logger::log_event,
+            logger::get_logs_summary,
+            logger::export_all_logs,
+            logger::save_logs_to_file,
+            logger::clear_all_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

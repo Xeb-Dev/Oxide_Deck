@@ -375,6 +375,7 @@ export default function SettingsPage() {
             {activeTab === 'data' && (
               <DataSettings
                 onResetDB={handleResetDB}
+                onNotify={(message, variant) => setSaveStatus({ message, variant })}
               />
             )}
           </div>
