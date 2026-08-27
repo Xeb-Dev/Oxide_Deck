@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   getStats,
-  getDueFlashcards,
+  getDueDecksSummary,
   getCardStateStats,
-  getTests,
-  getTestErrors,
+  getTestSummaryStats,
   Stats,
   CardStateStats,
+  DueDeckSummary,
 } from "../services/db";
 import { checkAndTriggerStudyReminders } from "../services/notificationService";
 import {
@@ -42,9 +42,7 @@ interface DashboardProps {
 
 export default function Dashboard({ setCurrentNav }: DashboardProps) {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [dueDecks, setDueDecks] = useState<
-    { id: string; name: string; icon: string; count: number }[]
-  >([]);
+  const [dueDecks, setDueDecks] = useState<DueDeckSummary[]>([]);
   const [totalDueCount, setTotalDueCount] = useState(0);
   const [cardStates, setCardStates] = useState<CardStateStats>({
     newCount: 0,
@@ -79,66 +77,24 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
         setLoading(true);
       }
 
-      const [s, dueCards, stateStats, testList, errorList] = await Promise.all([
+      // Execute ultra-fast aggregated queries in parallel
+      const [s, dueData, stateStats, testSummary] = await Promise.all([
         getStats(),
-        getDueFlashcards(),
+        getDueDecksSummary(),
         getCardStateStats(),
-        getTests(),
-        getTestErrors("all"),
+        getTestSummaryStats(),
       ]);
 
       setStats(s);
-      setTotalDueCount(dueCards.length);
+      setDueDecks(dueData.dueDecks);
+      setTotalDueCount(dueData.totalDueCount);
       setCardStates(stateStats);
-      setErrorCount(errorList.length);
+      setAvgTestScore(testSummary.avgTestScore);
+      setErrorCount(testSummary.errorCount);
 
-      // Scored tests average
-      const scoredTests = testList.filter(
-        (t) => t.score !== null && t.max_score > 0
-      );
-      if (scoredTests.length > 0) {
-        const avg = Math.round(
-          scoredTests.reduce(
-            (acc, t) => acc + ((t.score ?? 0) / t.max_score) * 100,
-            0
-          ) / scoredTests.length
-        );
-        setAvgTestScore(avg);
-      } else {
-        setAvgTestScore(null);
-      }
-
-      // Aggregate due flashcards by deck
-      const deckMap: Record<
-        string,
-        { name: string; icon: string; count: number }
-      > = {};
-
-      dueCards.forEach((card) => {
-        if (!deckMap[card.deck_id]) {
-          deckMap[card.deck_id] = {
-            name: card.deck_name,
-            icon: "🎴",
-            count: 0,
-          };
-        }
-        deckMap[card.deck_id].count++;
-      });
-
-      const aggregatedDecks = Object.entries(deckMap).map(([id, info]) => ({
-        id,
-        name: info.name,
-        icon: info.icon,
-        count: info.count,
-      }));
-
-      // Sort by highest count of due cards first
-      aggregatedDecks.sort((a, b) => b.count - a.count);
-      setDueDecks(aggregatedDecks);
-
-      // Trigger Spaced Repetition study reminder checks
+      // Trigger Spaced Repetition study reminder checks asynchronously
       checkAndTriggerStudyReminders(
-        dueCards.length,
+        dueData.totalDueCount,
         s.cardsReviewedToday || 0
       ).catch(console.error);
     } catch (e) {

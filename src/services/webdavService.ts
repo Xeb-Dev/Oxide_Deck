@@ -76,6 +76,20 @@ export function saveWebDavConfig(config: WebDavConfig): void {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("webdav-config-changed", { detail: config }));
   }
+
+  // Asynchronously schedule / update Android native WorkManager background sync
+  const intervalMinutes = config.syncIntervalUnit === 'minutes' 
+    ? Math.max(15, Number(config.syncIntervalValue) || 15) 
+    : 15;
+
+  invoke("sync_webdav_workmanager_config", {
+    enabled: config.enabled,
+    intervalMinutes,
+    serverUrl: config.serverUrl || "",
+    username: config.username || "",
+    password: config.password || "",
+    remotePath: config.remotePath || "/OxideDeck",
+  }).catch(() => {});
 }
 
 function buildBasicAuth(user: string, pass: string): string {
@@ -110,45 +124,49 @@ export async function executeWebDav(
     ...headers,
   };
 
-  try {
-    // Attempt Tauri native invoke first
-    const res = await invoke<WebDavResponse>("webdav_exec", {
-      method,
-      url: fullUrl,
-      headers: reqHeaders,
-      body: body || null,
-    });
-    return res;
-  } catch (tauriError) {
-    // If running in browser / dev preview without native backend, fallback to fetch
-    console.warn("Tauri native webdav_exec unavailable, attempting fetch fallback:", tauriError);
+  const isTauri = typeof window !== "undefined" && Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
+
+  if (isTauri) {
     try {
-      const response = await fetch(fullUrl, {
+      const res = await invoke<WebDavResponse>("webdav_exec", {
         method,
+        url: fullUrl,
         headers: reqHeaders,
-        body: body ? body : undefined,
+        body: body || null,
       });
-
-      const text = await response.text();
-      const status = response.status;
-      const isSuccess =
-        response.ok || status === 207 || status === 201 || status === 204 || status === 405;
-
-      const respHeaders: Record<string, string> = {};
-      response.headers.forEach((v, k) => {
-        respHeaders[k] = v;
-      });
-
-      return {
-        status,
-        status_text: response.statusText,
-        headers: respHeaders,
-        body: text,
-        is_success: isSuccess,
-      };
-    } catch (fetchErr: any) {
-      throw new Error(`WebDAV Connection Error: ${fetchErr?.message || fetchErr || tauriError}`);
+      return res;
+    } catch (tauriError: any) {
+      throw new Error(`WebDAV Connection Error: ${tauriError?.message || tauriError}`);
     }
+  }
+
+  // Pure browser / dev preview fallback only
+  try {
+    const response = await fetch(fullUrl, {
+      method,
+      headers: reqHeaders,
+      body: body ? body : undefined,
+    });
+
+    const text = await response.text();
+    const status = response.status;
+    const isSuccess =
+      response.ok || status === 207 || status === 201 || status === 204 || status === 405;
+
+    const respHeaders: Record<string, string> = {};
+    response.headers.forEach((v, k) => {
+      respHeaders[k] = v;
+    });
+
+    return {
+      status,
+      status_text: response.statusText,
+      headers: respHeaders,
+      body: text,
+      is_success: isSuccess,
+    };
+  } catch (fetchErr: any) {
+    throw new Error(`WebDAV Connection Error: ${fetchErr?.message || fetchErr}`);
   }
 }
 

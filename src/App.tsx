@@ -10,7 +10,6 @@ import ScoresPage from "./pages/Scores";
 import MockExamPage from "./pages/MockExam";
 import { loadWebDavConfig, getSyncIntervalSeconds } from "./services/webdavService";
 import {
-  performWebDAVSync,
   performOptimizedPeriodicSync,
   triggerBackgroundSyncIfEnabled,
 } from "./services/syncEngine";
@@ -45,23 +44,45 @@ function App() {
     setSidebarRefreshTrigger(prev => prev + 1);
   };
 
-  // Background WebDAV Auto-Sync on Launch
+  // Background WebDAV Auto-Sync on Launch & Screen Resume
   useEffect(() => {
-    const webdavConfig = loadWebDavConfig();
-    if (
-      webdavConfig.enabled &&
-      webdavConfig.autoSyncOnLaunch &&
-      webdavConfig.serverUrl.trim() &&
-      webdavConfig.username.trim()
-    ) {
-      performWebDAVSync()
-        .then((res) => {
-          if (res.success) {
-            triggerSidebarRefresh();
-          }
-        })
-        .catch((e) => console.warn("Background auto-sync on launch failed:", e));
-    }
+    let resumeTimeout: any = null;
+
+    const runResumeSync = (delayMs: number) => {
+      const webdavConfig = loadWebDavConfig();
+      if (
+        webdavConfig.enabled &&
+        webdavConfig.serverUrl.trim() &&
+        webdavConfig.username.trim()
+      ) {
+        if (resumeTimeout) clearTimeout(resumeTimeout);
+        // Wait for Android OS network radio to finish reconnecting DHCP/DNS after sleep
+        resumeTimeout = setTimeout(() => {
+          performOptimizedPeriodicSync()
+            .then((res) => {
+              if (res.success && res.stats) {
+                triggerSidebarRefresh();
+              }
+            })
+            .catch((e) => console.warn("On-resume WebDAV sync check failed:", e));
+        }, delayMs);
+      }
+    };
+
+    // Initial launch sync (1.5s delay to let device network settle)
+    runResumeSync(1500);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runResumeSync(1500);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      if (resumeTimeout) clearTimeout(resumeTimeout);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   // Background Periodic WebDAV Interval Sync (Optimized Differential Change Detection)
@@ -71,6 +92,15 @@ function App() {
     let currentEnabled = false;
 
     const setupInterval = () => {
+      // If the app is minimized or screen is off, do not run in-app timer (WorkManager handles background sync)
+      if (document.visibilityState === 'hidden') {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        return;
+      }
+
       const webdavConfig = loadWebDavConfig();
       const intervalSec = getSyncIntervalSeconds(webdavConfig);
       const isEnabled = Boolean(
@@ -102,6 +132,7 @@ function App() {
 
       const intervalMs = intervalSec * 1000;
       timer = setInterval(() => {
+        if (document.visibilityState === 'hidden') return;
         performOptimizedPeriodicSync()
           .then((res) => {
             if (res.success && res.stats) {
@@ -118,11 +149,17 @@ function App() {
       setupInterval();
     };
 
+    const handleVisibilityChange = () => {
+      setupInterval();
+    };
+
     window.addEventListener("webdav-config-changed", handleConfigChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       if (timer) clearInterval(timer);
       window.removeEventListener("webdav-config-changed", handleConfigChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

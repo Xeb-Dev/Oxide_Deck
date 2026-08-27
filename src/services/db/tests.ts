@@ -275,3 +275,19 @@ export async function getTestErrorsByTestId(testId: string): Promise<TestError[]
     [testId]
   );
 }
+
+export async function getTestSummaryStats(): Promise<{ avgTestScore: number | null; errorCount: number }> {
+  const db = await getDB();
+  const [testScoreRes, errorCountRes] = await Promise.all([
+    db.select<{ avg_percentage: number | null }[]>(
+      "SELECT AVG((CAST(score AS REAL) / max_score) * 100) as avg_percentage FROM tests WHERE score IS NOT NULL AND max_score > 0"
+    ),
+    db.select<{ count: number }[]>("SELECT COUNT(*) as count FROM test_errors"),
+  ]);
+
+  const avgRaw = testScoreRes[0]?.avg_percentage;
+  const avgTestScore = avgRaw !== null && avgRaw !== undefined ? Math.round(avgRaw) : null;
+  const errorCount = errorCountRes[0]?.count || 0;
+
+  return { avgTestScore, errorCount };
+}

@@ -117,6 +117,42 @@ export async function reviewFlashcard(id: string, rating: number): Promise<void>
   await addRevisionHistory(id, 'flashcard', ratingToScore(rating as Rating), rating);
 }
 
+export interface DueDeckSummary {
+  id: string;
+  name: string;
+  icon: string;
+  count: number;
+}
+
+export async function getDueDecksSummary(): Promise<{ dueDecks: DueDeckSummary[]; totalDueCount: number }> {
+  const db = await getDB();
+  const rows = await db.select<{ id: string; name: string; icon: string | null; count: number }[]>(
+    `SELECT 
+      d.id, 
+      d.name, 
+      d.icon, 
+      COUNT(f.id) as count 
+     FROM flashcards f 
+     JOIN decks d ON f.deck_id = d.id 
+     WHERE datetime(f.next_review) <= datetime('now') 
+     GROUP BY d.id, d.name, d.icon 
+     ORDER BY count DESC`
+  );
+
+  let totalDueCount = 0;
+  const dueDecks: DueDeckSummary[] = rows.map((r) => {
+    totalDueCount += r.count;
+    return {
+      id: r.id,
+      name: r.name,
+      icon: r.icon || "🎴",
+      count: r.count,
+    };
+  });
+
+  return { dueDecks, totalDueCount };
+}
+
 export async function getDueFlashcards(): Promise<(Flashcard & { deck_name: string })[]> {
   const db = await getDB();
   return db.select<(Flashcard & { deck_name: string })[]>(

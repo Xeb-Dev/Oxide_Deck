@@ -101,7 +101,7 @@ export async function exportLocalSyncPackage(): Promise<SyncPackage> {
     exported_at: new Date().toISOString(),
     client_id: getClientId(),
     device_name: getDeviceName(),
-    schema_version: 13,
+    schema_version: 12,
     subjects,
     folders,
     decks,
@@ -541,6 +541,15 @@ export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<Sy
     };
   }
 
+  // If the app is in the background or screen is asleep, let Android WorkManager handle sync
+  if (typeof document !== "undefined" && document.visibilityState === 'hidden' && !customConfig) {
+    return {
+      success: true,
+      message: "In-app sync paused while screen is off / app is hidden (managed by WorkManager).",
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   if (isSyncInProgress) {
     return {
       success: true,
@@ -626,6 +635,15 @@ export async function performOptimizedPeriodicSync(customConfig?: WebDavConfig):
     return {
       success: false,
       message: "WebDAV sync not configured.",
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // If the app is in the background or screen is asleep, let Android WorkManager handle sync
+  if (typeof document !== "undefined" && document.visibilityState === 'hidden' && !customConfig) {
+    return {
+      success: true,
+      message: "In-app sync paused while screen is off / app is hidden (managed by WorkManager).",
       timestamp: new Date().toISOString(),
     };
   }

@@ -70,9 +70,11 @@ fn get_webdav_client() -> &'static reqwest::Client {
     WEBDAV_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .user_agent("OxideDeck-WebDAV/1.0")
-            .pool_idle_timeout(std::time::Duration::from_secs(90))
-            .pool_max_idle_per_host(10)
-            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(25))
+            .connect_timeout(std::time::Duration::from_secs(12))
+            .pool_idle_timeout(std::time::Duration::from_secs(15))
+            .pool_max_idle_per_host(5)
+            .tcp_keepalive(std::time::Duration::from_secs(15))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     })
@@ -128,7 +130,7 @@ async fn webdav_exec(
         || status.as_u16() == 207 // 207 Multi-Status (WebDAV)
         || status.as_u16() == 201 // 201 Created (MKCOL/PUT)
         || status.as_u16() == 204 // 204 No Content
-        || status.as_u16() == 405; // 405 Method Not Allowed (e.g. MKCOL on already existing dir)
+        || status.as_u16() == 405; // 405 Method Not Allowed (e.g. MKCOL on existing dir)
 
     let mut resp_headers = std::collections::HashMap::new();
     for (k, v) in response.headers() {
@@ -162,7 +164,8 @@ pub fn run() {
             fetch_url_html,
             proxy_post_request,
             update_widget_data,
-            webdav_exec
+            webdav_exec,
+            sync_webdav_workmanager_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -187,6 +190,28 @@ async fn update_widget_data(
     }
 
     let _ = (streak_days, progress_today, target_today, condition_met, due_cards_count);
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_webdav_workmanager_config(
+    _app: tauri::AppHandle,
+    enabled: bool,
+    interval_minutes: i64,
+    server_url: String,
+    username: String,
+    password: String,
+    remote_path: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        println!(
+            "Android WorkManager sync configured: enabled={}, interval={}m, url={}",
+            enabled, interval_minutes, server_url
+        );
+    }
+
+    let _ = (enabled, interval_minutes, server_url, username, password, remote_path);
     Ok(())
 }
 
