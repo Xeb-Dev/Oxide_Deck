@@ -4,6 +4,7 @@ import {
   Flashcard, Deck, getDecks
 } from "../services/db";
 import { Rating, scoreToRating } from "../services/fsrs";
+import { triggerBackgroundSyncIfEnabled } from "../services/syncEngine";
 import {
   validateFlashcardAnswer, runTeachingDialogue, generateQuizFromFlashcards, QuizQuestion, ValidationResult,
   getLearningPersonalities, LearningPersonality
@@ -285,6 +286,19 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
       isTransitioningRef.current = false;
     }
   };
+
+  // Auto-sync progress to WebDAV cloud upon exiting revision or session completion
+  useEffect(() => {
+    return () => {
+      triggerBackgroundSyncIfEnabled("exit-revision");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sessionCompleted) {
+      triggerBackgroundSyncIfEnabled("revision-session-completed");
+    }
+  }, [sessionCompleted]);
 
   // Keyboard navigation shortcuts
   useEffect(() => {

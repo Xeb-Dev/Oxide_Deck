@@ -1,7 +1,7 @@
 import React from "react";
-import { Bot, Sparkles, Bell, BrainCircuit, Database } from "lucide-react";
+import { Bot, Sparkles, Bell, BrainCircuit, Database, Cloud } from "lucide-react";
 
-export type SettingsTabId = 'ai' | 'personas' | 'notifications' | 'fsrs' | 'data';
+export type SettingsTabId = 'ai' | 'personas' | 'notifications' | 'fsrs' | 'sync' | 'data';
 
 export interface SettingsTabConfig {
   id: SettingsTabId;
@@ -40,6 +40,13 @@ export const SETTINGS_TABS: SettingsTabConfig[] = [
     icon: Sparkles,
     description: 'View memory scheduler parameters and run optimization routines',
     keywords: ['fsrs', 'algorithm', 'spaced repetition', 'optimize', 'parameters', 'retention', 'scheduler']
+  },
+  {
+    id: 'sync',
+    label: 'Cloud & WebDAV Sync',
+    icon: Cloud,
+    description: 'Sync flashcards, decks, FSRS progress, and history across devices via WebDAV',
+    keywords: ['webdav', 'sync', 'cloud', 'nextcloud', 'owncloud', 'fastmail', 'backup', 'remote', 'synology']
   },
   {
     id: 'data',

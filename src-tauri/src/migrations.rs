@@ -215,5 +215,15 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "enable_wal_and_busy_timeout",
+            sql: "
+                PRAGMA journal_mode = WAL;
+                PRAGMA busy_timeout = 5000;
+                PRAGMA synchronous = NORMAL;
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }

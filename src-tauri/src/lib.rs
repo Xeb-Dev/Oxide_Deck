@@ -62,6 +62,92 @@ async fn proxy_post_request(
     Ok(response_text)
 }
 
+use std::sync::OnceLock;
+
+static WEBDAV_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn get_webdav_client() -> &'static reqwest::Client {
+    WEBDAV_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("OxideDeck-WebDAV/1.0")
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .pool_max_idle_per_host(10)
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct WebdavResponse {
+    pub status: u16,
+    pub status_text: String,
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+    pub is_success: bool,
+}
+
+#[tauri::command]
+async fn webdav_exec(
+    method: String,
+    url: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+) -> Result<WebdavResponse, String> {
+    let client = get_webdav_client();
+
+    let method_upper = method.to_uppercase();
+    let reqwest_method = match method_upper.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "HEAD" => reqwest::Method::HEAD,
+        "OPTIONS" => reqwest::Method::OPTIONS,
+        other => reqwest::Method::from_bytes(other.as_bytes())
+            .map_err(|e| format!("Invalid HTTP method {}: {}", other, e))?,
+    };
+
+    let mut request_builder = client.request(reqwest_method, &url);
+
+    for (key, value) in headers {
+        request_builder = request_builder.header(key, value);
+    }
+
+    if let Some(b) = body {
+        request_builder = request_builder.body(b);
+    }
+
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|e| format!("WebDAV network error: {}", e))?;
+
+    let status = response.status();
+    let is_success = status.is_success()
+        || status.as_u16() == 207 // 207 Multi-Status (WebDAV)
+        || status.as_u16() == 201 // 201 Created (MKCOL/PUT)
+        || status.as_u16() == 204 // 204 No Content
+        || status.as_u16() == 405; // 405 Method Not Allowed (e.g. MKCOL on already existing dir)
+
+    let mut resp_headers = std::collections::HashMap::new();
+    for (k, v) in response.headers() {
+        if let Ok(v_str) = v.to_str() {
+            resp_headers.insert(k.as_str().to_string(), v_str.to_string());
+        }
+    }
+
+    let response_text = response.text().await.unwrap_or_default();
+
+    Ok(WebdavResponse {
+        status: status.as_u16(),
+        status_text: status.canonical_reason().unwrap_or("").to_string(),
+        headers: resp_headers,
+        body: response_text,
+        is_success,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -75,7 +161,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             fetch_url_html,
             proxy_post_request,
-            update_widget_data
+            update_widget_data,
+            webdav_exec
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

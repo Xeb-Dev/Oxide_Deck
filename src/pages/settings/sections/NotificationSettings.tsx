@@ -48,12 +48,14 @@ export default function NotificationSettings({
           label="Enable All Notifications"
           description="Allow system notifications and background alerts for spaced repetition"
         >
-          <input
-            type="checkbox"
-            checked={settings.masterEnabled}
-            onChange={(e) => onChange("masterEnabled", e.target.checked)}
-            style={{ transform: "scale(1.15)", cursor: "pointer" }}
-          />
+          <label className="notion-switch">
+            <input
+              type="checkbox"
+              checked={settings.masterEnabled}
+              onChange={(e) => onChange("masterEnabled", e.target.checked)}
+            />
+            <span className="notion-slider round"></span>
+          </label>
         </SettingRow>
       </SettingCard>
 
@@ -251,11 +253,14 @@ export default function NotificationSettings({
                   onChange={(e) => onChange("dueCardsThresholdCount", Math.max(1, parseInt(e.target.value) || 1))}
                   disabled={!settings.dueCardsThresholdEnabled}
                 />
-                <input
-                  type="checkbox"
-                  checked={settings.dueCardsThresholdEnabled}
-                  onChange={(e) => onChange("dueCardsThresholdEnabled", e.target.checked)}
-                />
+                <label className="notion-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.dueCardsThresholdEnabled}
+                    onChange={(e) => onChange("dueCardsThresholdEnabled", e.target.checked)}
+                  />
+                  <span className="notion-slider round"></span>
+                </label>
               </div>
             </SettingRow>
 
@@ -272,11 +277,14 @@ export default function NotificationSettings({
                   onChange={(e) => onChange("streakSaverTime", e.target.value)}
                   disabled={!settings.streakSaverEnabled}
                 />
-                <input
-                  type="checkbox"
-                  checked={settings.streakSaverEnabled}
-                  onChange={(e) => onChange("streakSaverEnabled", e.target.checked)}
-                />
+                <label className="notion-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.streakSaverEnabled}
+                    onChange={(e) => onChange("streakSaverEnabled", e.target.checked)}
+                  />
+                  <span className="notion-slider round"></span>
+                </label>
               </div>
             </SettingRow>
           </SettingCard>
@@ -291,7 +299,7 @@ export default function NotificationSettings({
               label="Quiet Hours (Do Not Disturb)"
               description="Suppress notifications between specified hours"
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <input
                   type="time"
                   className="notion-input"
@@ -309,11 +317,14 @@ export default function NotificationSettings({
                   onChange={(e) => onChange("quietHoursEnd", e.target.value)}
                   disabled={!settings.quietHoursEnabled}
                 />
-                <input
-                  type="checkbox"
-                  checked={settings.quietHoursEnabled}
-                  onChange={(e) => onChange("quietHoursEnabled", e.target.checked)}
-                />
+                <label className="notion-switch">
+                  <input
+                    type="checkbox"
+                    checked={settings.quietHoursEnabled}
+                    onChange={(e) => onChange("quietHoursEnabled", e.target.checked)}
+                  />
+                  <span className="notion-slider round"></span>
+                </label>
               </div>
             </SettingRow>
 
@@ -325,11 +336,14 @@ export default function NotificationSettings({
               }
               description="Play subtle audio cues when study reminders trigger"
             >
-              <input
-                type="checkbox"
-                checked={settings.soundEnabled}
-                onChange={(e) => onChange("soundEnabled", e.target.checked)}
-              />
+              <label className="notion-switch">
+                <input
+                  type="checkbox"
+                  checked={settings.soundEnabled}
+                  onChange={(e) => onChange("soundEnabled", e.target.checked)}
+                />
+                <span className="notion-slider round"></span>
+              </label>
             </SettingRow>
 
             <SettingRow
@@ -340,11 +354,14 @@ export default function NotificationSettings({
               }
               description="Show non-intrusive floating banners inside the Oxide Deck interface"
             >
-              <input
-                type="checkbox"
-                checked={settings.inAppToastEnabled}
-                onChange={(e) => onChange("inAppToastEnabled", e.target.checked)}
-              />
+              <label className="notion-switch">
+                <input
+                  type="checkbox"
+                  checked={settings.inAppToastEnabled}
+                  onChange={(e) => onChange("inAppToastEnabled", e.target.checked)}
+                />
+                <span className="notion-slider round"></span>
+              </label>
             </SettingRow>
           </SettingCard>
         </>

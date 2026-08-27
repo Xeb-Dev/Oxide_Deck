@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Folders from "./pages/Folders";
@@ -8,6 +8,12 @@ import SettingsPage from "./pages/Settings";
 import TestPage from "./pages/Test";
 import ScoresPage from "./pages/Scores";
 import MockExamPage from "./pages/MockExam";
+import { loadWebDavConfig, getSyncIntervalSeconds } from "./services/webdavService";
+import {
+  performWebDAVSync,
+  performOptimizedPeriodicSync,
+  triggerBackgroundSyncIfEnabled,
+} from "./services/syncEngine";
 import "./App.css";
 
 interface NavigationState {
@@ -39,7 +45,105 @@ function App() {
     setSidebarRefreshTrigger(prev => prev + 1);
   };
 
+  // Background WebDAV Auto-Sync on Launch
+  useEffect(() => {
+    const webdavConfig = loadWebDavConfig();
+    if (
+      webdavConfig.enabled &&
+      webdavConfig.autoSyncOnLaunch &&
+      webdavConfig.serverUrl.trim() &&
+      webdavConfig.username.trim()
+    ) {
+      performWebDAVSync()
+        .then((res) => {
+          if (res.success) {
+            triggerSidebarRefresh();
+          }
+        })
+        .catch((e) => console.warn("Background auto-sync on launch failed:", e));
+    }
+  }, []);
+
+  // Background Periodic WebDAV Interval Sync (Optimized Differential Change Detection)
+  useEffect(() => {
+    let timer: any = null;
+    let currentIntervalSec = -1;
+    let currentEnabled = false;
+
+    const setupInterval = () => {
+      const webdavConfig = loadWebDavConfig();
+      const intervalSec = getSyncIntervalSeconds(webdavConfig);
+      const isEnabled = Boolean(
+        webdavConfig.enabled &&
+        webdavConfig.serverUrl.trim() &&
+        webdavConfig.username.trim()
+      );
+
+      // Only restart timer if interval or enabled state actually changed
+      if (
+        intervalSec === currentIntervalSec &&
+        isEnabled === currentEnabled &&
+        timer !== null
+      ) {
+        return;
+      }
+
+      currentIntervalSec = intervalSec;
+      currentEnabled = isEnabled;
+
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+
+      if (intervalSec <= 0 || !isEnabled) {
+        return;
+      }
+
+      const intervalMs = intervalSec * 1000;
+      timer = setInterval(() => {
+        performOptimizedPeriodicSync()
+          .then((res) => {
+            if (res.success && res.stats) {
+              triggerSidebarRefresh();
+            }
+          })
+          .catch((e) => console.warn("Periodic WebDAV interval sync failed:", e));
+      }, intervalMs);
+    };
+
+    setupInterval();
+
+    const handleConfigChange = () => {
+      setupInterval();
+    };
+
+    window.addEventListener("webdav-config-changed", handleConfigChange);
+
+    return () => {
+      if (timer) clearInterval(timer);
+      window.removeEventListener("webdav-config-changed", handleConfigChange);
+    };
+  }, []);
+
+  // Global listener for sync completions to refresh sidebar folders and deck trees
+  useEffect(() => {
+    const handleSyncComplete = (e: any) => {
+      if (e?.detail?.success) {
+        triggerSidebarRefresh();
+      }
+    };
+    window.addEventListener("webdav-sync-completed", handleSyncComplete);
+    return () => {
+      window.removeEventListener("webdav-sync-completed", handleSyncComplete);
+    };
+  }, []);
+
   const handleNavChange = (newNav: NavigationState) => {
+    if (currentNav.page === 'revision' && newNav.page !== 'revision') {
+      triggerBackgroundSyncIfEnabled("exit-revision");
+    }
+
     if (isMockExamActive && newNav.page !== 'mock') {
       setPendingNav(newNav);
       setShowLeaveConfirm(true);

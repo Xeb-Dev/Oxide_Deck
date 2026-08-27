@@ -7,6 +7,7 @@ import type {
   TestAnalysis,
   TestError,
 } from "./types";
+import { triggerBackgroundSyncIfEnabled } from "../syncEngine";
 
 export async function getTests(): Promise<Test[]> {
   const db = await getDB();
@@ -57,6 +58,7 @@ export async function createTest(
       now,
     ]
   );
+  triggerBackgroundSyncIfEnabled("new test");
   return {
     id,
     subject_id: subjectId,
@@ -86,11 +88,13 @@ export async function updateTest(
     "UPDATE tests SET name = $1, description = $2, score = $3, max_score = $4, test_date = $5, time_limit_minutes = $6 WHERE id = $7",
     [name, description, score, maxScore, testDate, timeLimitMinutes, id]
   );
+  triggerBackgroundSyncIfEnabled("update test");
 }
 
 export async function deleteTest(id: string): Promise<void> {
   const db = await getDB();
   await db.execute("DELETE FROM tests WHERE id = $1", [id]);
+  triggerBackgroundSyncIfEnabled("delete test");
 }
 
 export async function getTestQuestions(testId: string): Promise<TestQuestion[]> {
@@ -230,6 +234,7 @@ export async function saveTestAnalysis(
       ]
     );
   }
+  triggerBackgroundSyncIfEnabled("save test analysis");
 }
 
 export async function getTestErrors(subjectId?: string): Promise<TestError[]> {

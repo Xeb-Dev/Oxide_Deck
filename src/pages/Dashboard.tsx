@@ -58,12 +58,26 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadDashboardData();
+    loadDashboardData(true);
+
+    const handleSyncCompleted = (e: any) => {
+      if (e?.detail?.success) {
+        loadDashboardData(false);
+      }
+    };
+
+    window.addEventListener("webdav-sync-completed", handleSyncCompleted);
+
+    return () => {
+      window.removeEventListener("webdav-sync-completed", handleSyncCompleted);
+    };
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (showLoadingSpinner = true) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner) {
+        setLoading(true);
+      }
 
       const [s, dueCards, stateStats, testList, errorList] = await Promise.all([
         getStats(),
@@ -130,7 +144,9 @@ export default function Dashboard({ setCurrentNav }: DashboardProps) {
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
     } finally {
-      setLoading(false);
+      if (showLoadingSpinner) {
+        setLoading(false);
+      }
     }
   };
 

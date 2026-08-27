@@ -5,6 +5,7 @@ import AISettings from "./sections/AISettings";
 import PersonaSettings from "./sections/PersonaSettings";
 import NotificationSettings from "./sections/NotificationSettings";
 import FSRSSettings from "./sections/FSRSSettings";
+import WebDAVSyncSettings from "./sections/WebDAVSyncSettings";
 import DataSettings from "./sections/DataSettings";
 import StatusBanner, { StatusVariant } from "../../components/StatusBanner";
 import { resetDatabase, getFSRSParameters, optimizeFSRSParameters, resetFSRSParameters, FsrsParametersInfo } from "../../services/db";
@@ -365,6 +366,10 @@ export default function SettingsPage() {
                 onOptimize={handleOptimizeFSRS}
                 onReset={handleResetFSRS}
               />
+            )}
+
+            {activeTab === 'sync' && (
+              <WebDAVSyncSettings />
             )}
 
             {activeTab === 'data' && (

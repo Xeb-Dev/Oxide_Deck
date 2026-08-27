@@ -2,6 +2,7 @@ import { getDB, generateUUID } from "./connection";
 import type { Flashcard } from "./types";
 import { cardFromRow, rowFromCard, getFSRS, ratingToScore, type Grade, type Rating } from "../fsrs";
 import { addRevisionHistory } from "./revisionHistory";
+import { triggerBackgroundSyncIfEnabled } from "../syncEngine";
 
 export async function getFlashcards(deckId: string): Promise<Flashcard[]> {
   const db = await getDB();
@@ -36,6 +37,7 @@ export async function createFlashcard(
     "INSERT INTO flashcards (id, deck_id, front, back, tags, ease, interval_days, repetitions, next_review, created_at, stability, difficulty, state, reps, lapses, elapsed_days, scheduled_days, last_review, image_url, front_image_url, back_image_url) VALUES ($1, $2, $3, $4, $5, 2.5, 0, 0, $6, $7, 0, 0, 0, 0, 0, 0, 0, NULL, $8, $9, $10)",
     [id, deckId, front, back, tags, now, now, fImg, fImg, bImg]
   );
+  triggerBackgroundSyncIfEnabled("new flashcard");
   return {
     id,
     deck_id: deckId,
@@ -78,16 +80,19 @@ export async function updateFlashcard(
     "UPDATE flashcards SET front = $1, back = $2, tags = $3, image_url = $4, front_image_url = $5, back_image_url = $6 WHERE id = $7",
     [front, back, tags, fImg, fImg, bImg, id]
   );
+  triggerBackgroundSyncIfEnabled("update flashcard");
 }
 
 export async function deleteFlashcard(id: string): Promise<void> {
   const db = await getDB();
   await db.execute("DELETE FROM flashcards WHERE id = $1", [id]);
+  triggerBackgroundSyncIfEnabled("delete flashcard");
 }
 
 export async function moveFlashcardToDeck(cardId: string, deckId: string): Promise<void> {
   const db = await getDB();
   await db.execute("UPDATE flashcards SET deck_id = $1 WHERE id = $2", [deckId, cardId]);
+  triggerBackgroundSyncIfEnabled("move flashcard");
 }
 
 // FSRS SPACED REPETITION ALGORITHM
