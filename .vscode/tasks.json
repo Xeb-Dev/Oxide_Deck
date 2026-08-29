@@ -4,7 +4,7 @@
     {
       "label": "Build Release: Oxide Deck (APK & Windows EXE)",
       "type": "shell",
-      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\"",
+      "command": "& '${workspaceFolder}/scripts/build_releases.ps1' -FolderName '${input:releaseFolderName}'",
       "problemMatcher": [],
       "group": {
         "kind": "build",
@@ -22,7 +22,7 @@
     {
       "label": "Build Release: Android APK Only",
       "type": "shell",
-      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\" -ApkOnly",
+      "command": "& '${workspaceFolder}/scripts/build_releases.ps1' -FolderName '${input:releaseFolderName}' -ApkOnly",
       "problemMatcher": [],
       "presentation": {
         "echo": true,
@@ -34,7 +34,7 @@
     {
       "label": "Build Release: Windows EXE Only",
       "type": "shell",
-      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\" -ExeOnly",
+      "command": "& '${workspaceFolder}/scripts/build_releases.ps1' -FolderName '${input:releaseFolderName}' -ExeOnly",
       "problemMatcher": [],
       "presentation": {
         "echo": true,
