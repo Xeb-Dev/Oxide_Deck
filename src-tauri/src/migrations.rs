@@ -215,5 +215,20 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "create_fts5_flashcards_search",
+            sql: "
+                CREATE VIRTUAL TABLE IF NOT EXISTS flashcards_fts USING fts5(
+                    id UNINDEXED,
+                    front,
+                    back,
+                    tags
+                );
+                INSERT OR IGNORE INTO flashcards_fts(id, front, back, tags)
+                SELECT id, front, back, COALESCE(tags, '') FROM flashcards;
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
