@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Release: Oxide Deck (APK & Windows EXE)",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\"",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
+      "label": "Build Release: Android APK Only",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\" -ApkOnly",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Build Release: Windows EXE Only",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/scripts/build_releases.ps1\" -FolderName \"${input:releaseFolderName}\" -ExeOnly",
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "releaseFolderName",
+      "type": "promptString",
+      "description": "Enter release version / folder name (e.g. 1.0.0 or v1.0.0):",
+      "default": "1.0.0"
+    }
+  ]
+}
