@@ -2,18 +2,19 @@
 
 <div align="center">
 
-![Oxide Deck Banner](https://img.shields.io/badge/Oxide%20Deck-Spaced%20Repetition%20%26%20AI%20Exam%20Prep-e11d48?style=for-the-badge)
+![Oxide Deck Banner](https://img.shields.io/badge/Oxide%20Deck-AI--Powered%20Spaced%20Repetition%20Flashcards-e11d48?style=for-the-badge)
 
-**A high-performance, local-first, AI-augmented spaced repetition & mock exam platform.**  
-*Engineered with Rust, Tauri 2, React 19, TypeScript, SQLite, and the FSRS-4.5 algorithm.*
+**A fast, local-first, AI-powered flashcard app with modern spaced repetition.**  
+*Built with Rust, Tauri 2, React 19, TypeScript, SQLite, and the FSRS-4.5 algorithm.*
 
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.0-blue?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-1.77+-orange?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![SQLite](https://img.shields.io/badge/SQLite-Local--First-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
+[![SQLite](https://img.shields.io/badge/SQLite-Local--First%20%2B%20FTS5-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
 [![FSRS](https://img.shields.io/badge/Algorithm-FSRS--4.5-8b5cf6)](https://github.com/open-spaced-repetition/fsrs4anki)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Cross Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Android-green)](https://github.com/Xeb-Dev/oxide_deck)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 </div>
 
@@ -21,54 +22,95 @@
 
 ## 📖 Overview
 
-**Oxide Deck** is a modern desktop flashcard and exam preparation workstation designed for serious students and professionals. Unlike bloated cloud-only platforms, Oxide Deck is **local-first**, private, lightning-fast, and powered by the cutting-edge **FSRS-4.5 (Free Spaced Repetition Scheduler)** memory algorithm.
+**Oxide Deck** is a fast, distraction-free flashcard app designed to help you learn faster and remember longer. It pairs the scientific precision of the **FSRS-4.5 (Free Spaced Repetition Scheduler)** with powerful **AI card generation** tools that turn lecture notes, PDFs, images, and web articles into study-ready flashcards in seconds.
 
-Beyond flashcards, Oxide Deck features an integrated **Exam & Past Paper Suite**: scan physical or PDF exam papers, simulate timed **Mock Exams** with AI variable mutations, and analyze error patterns (calculation slips, misread questions, conceptual gaps) to dramatically accelerate learning retention.
+Unlike cloud-locked study tools, Oxide Deck is **100% local-first**. All your decks, cards, images, and study statistics stay stored securely on your device in an optimized SQLite database. Sync effortlessly to your own private cloud via WebDAV or share decks offline with peer-to-peer QR codes.
+
+When you want to put your knowledge to the test, Oxide Deck also includes an integrated **Mock Exam Suite** to practice under real timed test conditions.
+
+---
+
+## 📥 Download & Quick Start
+
+> **New to Oxide Deck?** Watch the quick video guide below on how to download and install Oxide Deck from GitHub on your device:
+
+<div align="center">
+
+<!-- PASTE YOUR VIDEO LINK / EMBED HERE -->
+[![Watch the Download & Setup Video](https://img.shields.io/badge/▶%20Watch%20Video-How%20to%20Download%20%26%20Install-red?style=for-the-badge&logo=youtube)](https://github.com/Xeb-Dev/oxide_deck/releases/latest)
+
+<!-- 
+Tip: You can also embed an MP4 video or GIF directly using standard Markdown or HTML:
+<video src="https://path-to-your-video.mp4" controls="controls" width="100%"></video>
+or 
+![Download Guide](path-to-your-video-or-gif.gif)
+-->
+
+<br/>
+
+[![Download for Windows](https://img.shields.io/badge/Download-Windows%20(.exe)-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Xeb-Dev/oxide_deck/releases/latest)
+&nbsp;
+[![Download for Android](https://img.shields.io/badge/Download-Android%20(.apk)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Xeb-Dev/oxide_deck/releases/latest)
+
+</div>
+
+### 🚀 Simple 3-Step Setup
+
+1. **Download the Installer**:
+   - **Windows**: Download `OxideDeck-..._x64-windows-setup.exe` from the [Latest Release](https://github.com/Xeb-Dev/oxide_deck/releases/latest).
+   - **Android**: Download `OxideDeck-...-mobile-android.apk` directly to your phone.
+2. **Install**:
+   - **Windows**: Run the setup `.exe` (if Windows SmartScreen appears, click *More info* $\rightarrow$ *Run anyway*).
+   - **Android**: Tap the downloaded `.apk` and allow installation from your browser/files when prompted.
+3. **Start Learning**: Open Oxide Deck, create your first deck or import notes via PDF/Image, and start your review!
 
 ---
 
 ## ✨ Key Features
 
 ### 🧠 1. FSRS-4.5 Spaced Repetition Engine
-- **Modern Memory Scheduling**: Implements the state-of-the-art Free Spaced Repetition Scheduler (`ts-fsrs`), outperforming legacy SM-2.
-- **Configurable Retention Targets**: Calibrate desired retention rate from $70\%$ to $97\%$ per subject.
-- **Deep Memory Modeling**: Accurately tracks Card Stability, Difficulty, Retrievability, and Review States (*New*, *Learning*, *Review*, *Relearning*).
+- **Smarter Scheduling**: Uses the state-of-the-art Free Spaced Repetition Scheduler (`ts-fsrs`), proven to outperform legacy SM-2 algorithms.
+- **Personalized Weight Optimization**: Analyze your personal review history to fine-tune FSRS memory parameters ($w_{0}\dots w_{16}$) for your individual learning curve, with one-click reset to defaults.
+- **Deep Memory Modeling**: Accurately tracks card stability, difficulty, retrievability, lapses, and learning states (*New*, *Learning*, *Review*, *Relearning*).
 
-### 🗂️ 2. Hierarchical Subject & Folder Organization
-- **Structured Knowledge Tree**: Group cards and tests under Subjects $\rightarrow$ Nested Folders $\rightarrow$ Decks.
-- **Drag & Drop**: Seamlessly move decks and nested folders with non-destructive live updates.
-- **Personalized Visuals**: Custom emoji pickers and color-coded icons across all workspaces.
+### ⚡ 2. Instant AI Flashcard Creation
+- **PDF Study Studio**: Open PDF textbooks and slides in a dual-pane viewer to generate cards automatically or highlight specific text and visual snippets.
+- **AI Diagram Extraction**: Automatically detects, crops, and attaches diagrams, formulas, and charts directly to your flashcards.
+- **Vision OCR & Camera Capture**: Take photos of handwritten notes or paste screenshots from your clipboard—images are automatically converted to lightweight WebP files.
+- **Web Article Ingestion**: Paste documentation or article links to instantly extract definitions, core ideas, and study points.
+- **LaTeX & KaTeX Support**: Native rendering for complex math and science formulas (inline `$...$` and block `$$...$$`).
+- **Dual-Sided Images**: Attach high-resolution images to both the front and back of any card.
 
-### ⚡ 3. AI-Powered Flashcard Creation
-- **Multi-Modal Document Scanning**: Ingest PDFs, lectures, and documents with built-in text extraction and visual snippet matching.
-- **Camera & Clipboard Vision**: Snap a photo or paste a screenshot directly from clipboard; images are automatically compressed into optimized WebP assets.
-- **Web URL Extraction**: Provide article or documentation links to synthesize key definitions automatically.
-- **LaTeX & KaTeX Support**: Native rendering for complex mathematical and scientific formulas (inline `$...$` and block `$$...$$`).
+### 🔄 3. Flexible Revision Modes & AI Tutors
+- **Classic Flashcard Flip**: Fast, keyboard-friendly card reviews (<kbd>Space</kbd>/<kbd>Enter</kbd> to flip, <kbd>1</kbd>–<kbd>4</kbd> to rate, Arrow keys to browse) with smooth touch swipe gestures on mobile.
+- **Interactive Quiz Mode**: Automatically turns your flashcards into multiple-choice and short-answer quizzes.
+- **Socratic "Teach Me" Mode**: Conversational AI testing where an AI tutor asks questions to test whether you truly understand the concept.
+- **Custom Teaching Personas**: Build your own AI study partners with customized pedagogical styles (e.g. Socratic Professor, ELI5 Mentor, Strict Examiner).
 
-### 📝 4. Test Paper Scanning & Error Analytics
-- **Exam Ingestion**: Digitize past papers with structured question breakdown, mark allocation, and official marking schemes.
-- **Diagnostic AI Grading**: Analyzes student answers against marking criteria and classifies mistakes (*Conceptual*, *Misread*, *Calculation*, *Time-Management*).
-- **Scores & Analytics Hub**: Real-time overview of grade distributions, mistake breakdowns, mastery curves, and revision volume.
+### 🗂️ 4. Clean Knowledge Tree & Global Search
+- **Organized Hierarchy**: Structure your library cleanly into Subjects $\rightarrow$ Nested Folders $\rightarrow$ Decks.
+- **Drag & Drop**: Reorganize folders and cards easily with live drop zones and auto-scrolling.
+- **Personalized Styling**: Assign custom emojis and color tags to subjects, folders, and decks.
+- **Instant Full-Text Search**: Press <kbd>Ctrl+K</kbd> (or <kbd>Cmd+K</kbd>) to instantly search across all your cards, decks, tags, and notes using SQLite FTS5.
 
-### 🎯 5. Timed Mock Exam Arena
-- **Exam Simulation**: Practice under authentic timed test conditions with countdown clocks and fullscreen focus.
-- **Variable Variation Generation**: AI mutates values, equations, and algebra of real past papers so you can retake papers without memorizing raw numbers.
-- **Flashcard AI Mocks**: Generates comprehensive test papers dynamically derived from your existing decks.
-- **Safety Guards**: Styled in-app confirmation dialogs and navigation guards protect in-progress exams against accidental data loss.
+### ☁️ 5. Private Cloud Sync & Offline QR Sharing
+- **WebDAV Sync**: Seamlessly sync your study progress across Desktop and Android using Nextcloud, ownCloud, Fastmail, or any custom WebDAV server.
+- **Background Sync**: Automatic sync intervals and Android WorkManager support to keep your flashcards up to date on mobile.
+- **100% Offline QR Sharing**: Share decks directly between devices with compressed high-density QR codes—no servers or Wi-Fi required.
+- **Built-in Scanner**: Camera scanner with flashlight toggle, pinch zoom, tap focus, and image upload.
 
-### 🔄 6. Diverse Revision Modes
-- **Classic Flashcard Flip**: Keyboard-driven reviews (<kbd>Space</kbd>, <kbd>1</kbd>–<kbd>4</kbd> rating keys).
-- **Interactive Quiz Mode**: Multiple-choice format generated on the fly.
-- **"Teach Me" Mode**: Socratic dialogue where AI tests your understanding through conversational questions.
+### 📝 6. Integrated Past Paper & Mock Exam Suite
+- **Digitize Past Papers**: Scan physical or PDF tests into structured questions and marking criteria.
+- **Timed Practice Arena**: Simulate real exam pressure with custom countdown timers and distraction-free mode.
+- **Variable Mutation Mode**: AI alters the numbers and variables in past questions so you practice problem-solving instead of memorizing answers.
+- **Flashcard Mocks**: Generate dynamic practice tests created directly from your flashcard decks.
+- **Diagnostic Grading**: Automated marking that categorizes errors into *Conceptual*, *Calculation*, *Misread*, or *Time-Management* slips.
 
-### 🔔 7. Local Notifications & Study Reminders
-- **Native Desktop & In-App Alerts**: Configurable daily study time reminders and due card threshold alerts.
-- **Streak Saver Alerts**: Evening reminders on active study days to maintain learning streaks.
-- **Quiet Hours (DND)**: Respects user-defined quiet intervals and sound toggles.
-
-### 📤 8. Export, Import & QR Sharing
-- **Deck Sharing via QR Codes**: Generate compressed, scan-friendly QR codes to import flashcards across devices without external servers.
-- **Local JSON Backup**: Full database and deck-level export and import capabilities.
+### 📊 7. Mastery Analytics & Daily Habits
+- **Retention & Mastery Charts**: Visualize your memory decay curves, card distribution, and revision volume over time.
+- **Daily Streak Tracking**: Build study habits with configurable daily goals, streak saver alerts, and quiet hours (DND).
+- **Android Home Widget**: View your current streak and due cards right on your phone's home screen.
+- **Native Diagnostics**: Built-in multi-level logger with disk persistence and one-click JSON export.
 
 ---
 
@@ -77,66 +119,96 @@ Beyond flashcards, Oxide Deck features an integrated **Exam & Past Paper Suite**
 ```mermaid
 graph TD
     subgraph Frontend ["Frontend (React 19 + TypeScript + Vite)"]
-        UI["Notion-Inspired UI & Modals"]
-        SRS["FSRS-4.5 Engine (ts-fsrs)"]
+        UI["Notion-Inspired UI & Flashcard Arena"]
+        SRS["FSRS-4.5 Spaced Repetition Engine"]
+        FTS["FTS5 Full-Text Search Engine"]
         Katex["KaTeX Math Rendering"]
         Charts["Recharts Analytics"]
         PDFEngine["React-PDF & PDF.js"]
     end
 
     subgraph ServiceLayer ["Service Layer"]
-        DBFacade["DB Facade (src/services/db/)"]
-        LLMService["AI LLM & Vision Service"]
-        NotifService["Notification & Throttling Service"]
+        DBFacade["DB Layer (src/services/db/)"]
+        LLMService["AI Multi-Modal Service"]
+        SyncEngine["WebDAV Sync Engine"]
+        QRService["P2P Offline QR Transfer"]
+        Logger["Diagnostics & Logger"]
     end
 
-    subgraph DesktopBackend ["Desktop Core (Tauri 2 + Rust)"]
-        TauriCore["Tauri 2 Core Runtime"]
+    subgraph CoreRuntime ["Core Desktop & Mobile Runtime (Tauri 2 + Rust)"]
+        TauriCore["Tauri 2 Runtime"]
         Migrations["Native SQLite Migrations (src-tauri/migrations.rs)"]
-        SQLiteDB[("Local SQLite Database")]
-        Plugins["Tauri FS / Dialog / Notification Plugins"]
+        SQLiteDB[("Local SQLite Database + FTS5")]
+        NativeHTTP["Rust HTTP Client (Reqwest / WebDAV)"]
+        NativeLogger["Native Disk Logger (logger.rs)"]
+        AndroidWidget["Android Widget & WorkManager"]
     end
 
     UI --> DBFacade
     UI --> LLMService
-    UI --> NotifService
+    UI --> SyncEngine
+    UI --> QRService
+    UI --> Logger
     DBFacade --> TauriCore
     LLMService --> TauriCore
-    NotifService --> TauriCore
+    SyncEngine --> NativeHTTP
+    Logger --> NativeLogger
     TauriCore --> Migrations
     Migrations --> SQLiteDB
-    TauriCore --> Plugins
+    TauriCore --> AndroidWidget
 ```
 
 | Layer | Technologies |
 |---|---|
-| **Desktop Framework** | [Tauri 2.0](https://tauri.app/) (Rust 2021) |
-| **Frontend Framework** | [React 19](https://react.dev/), [TypeScript 5.8](https://www.typescriptlang.org/), [Vite 7](https://vitejs.dev/) |
-| **Local Database** | SQLite via `@tauri-apps/plugin-sql` and Rust `rusqlite` migrations |
-| **Spaced Repetition** | `ts-fsrs` (FSRS-4.5) |
+| **App Framework** | [Tauri 2.0](https://tauri.app/) (Rust 2021) — Desktop (Windows, macOS, Linux) & Mobile (Android) |
+| **Frontend** | [React 19](https://react.dev/), [TypeScript 5.8](https://www.typescriptlang.org/), [Vite 7](https://vitejs.dev/) |
+| **Local Database** | SQLite via `@tauri-apps/plugin-sql` with Rust native migrations & FTS5 full-text indexing |
+| **Spaced Repetition** | `ts-fsrs` (FSRS-4.5 Algorithm) |
+| **AI Providers** | Google Gemini, Groq, Local LLMs ([Ollama](https://ollama.ai/) / LM Studio) with per-task routing |
 | **Math & Visuals** | `KaTeX`, `lucide-react`, `recharts` |
-| **Document Processing** | `pdfjs-dist`, `react-pdf` |
-| **Styling** | Vanilla CSS Design System with light/dark glassmorphism |
+| **Document Processing** | `pdfjs-dist`, `react-pdf`, automated WebP image compression |
+| **Sync & Networking** | Custom WebDAV sync engine, `reqwest` with Rustls TLS, Android WorkManager |
+| **Offline Sharing** | `fflate` compression, `qrcode`, `jsqr` |
+| **Styling** | Vanilla CSS Design System with dark and light glassmorphism |
 
 ---
 
-## 🚀 Getting Started
+## ⌨️ Keyboard Shortcuts & Gestures
+
+| Area | Shortcut / Action | Description |
+|---|---|---|
+| **Global** | <kbd>Ctrl</kbd> + <kbd>K</kbd> / <kbd>Cmd</kbd> + <kbd>K</kbd> | Open Global Full-Text Search |
+| **Flashcards** | <kbd>Space</kbd> or <kbd>Enter</kbd> | Flip current flashcard |
+| **Flashcards** | <kbd>1</kbd> | Rate card **Again** (Fail) |
+| **Flashcards** | <kbd>2</kbd> | Rate card **Hard** |
+| **Flashcards** | <kbd>3</kbd> | Rate card **Good** |
+| **Flashcards** | <kbd>4</kbd> | Rate card **Easy** |
+| **Flashcards** | <kbd>←</kbd> / <kbd>→</kbd> | Browse previous / next card |
+| **Mobile** | Swipe Left / Right | Browse next / previous card |
+| **Mobile** | Tap Screen | Flip card front/back |
+
+---
+
+## 🛠️ Building from Source (For Developers)
+
+If you wish to contribute or build Oxide Deck from source, follow these setup steps:
 
 ### Prerequisites
 
 1. **Node.js**: `v18.0+` or `v20.0+` (LTS recommended)
 2. **Package Manager**: `pnpm` (or `npm` / `yarn`)
 3. **Rust Toolchain**: `rustc` and `cargo` installed via [rustup.rs](https://rustup.rs/)
-4. **OS Dependencies**:
-   - **Windows**: WebView2 (pre-installed on Windows 10/11) and MSVC C++ build tools
+4. **OS Build Tools**:
+   - **Windows**: Microsoft Visual Studio C++ Build Tools & WebView2 (pre-installed on Windows 10/11)
    - **macOS**: Xcode Command Line Tools
    - **Linux**: `libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `libssl-dev`
+   - **Android (Optional)**: Android Studio, Android SDK, NDK, and JDK 17
 
 ### Installation & Development
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/oxide_deck.git
+   git clone https://github.com/Xeb-Dev/oxide_deck.git
    cd oxide_deck
    ```
 
@@ -145,71 +217,53 @@ graph TD
    pnpm install
    ```
 
-3. **Run the desktop app in development mode**:
+3. **Start desktop development server**:
    ```bash
    pnpm tauri dev
    ```
 
-4. **Build the production installer**:
+4. **Start Android development server**:
    ```bash
-   pnpm tauri build
+   pnpm tauri android dev
    ```
-   *The compiled binary and native installer (`.msi` / `.dmg` / `.AppImage`) will be available in `src-tauri/target/release/bundle/`.*
 
 ---
 
-## 📂 Project Structure
+## 📦 Building Releases
 
+Oxide Deck includes an automated script for packaging Windows installers and Android APKs:
+
+```bash
+# Run the automated release pipeline
+pnpm build:release
 ```
-oxide_deck/
-├── src-tauri/               # Tauri 2 Desktop & Rust Backend
-│   ├── src/
-│   │   ├── lib.rs           # Tauri app entry & plugin initialization
-│   │   ├── main.rs          # Application entrypoint
-│   │   └── migrations.rs    # Database schema definitions & migrations
-│   ├── tauri.conf.json      # Window, security & build configurations
-│   └── Cargo.toml           # Rust crate dependencies
-│
-├── src/                     # Frontend Application
-│   ├── components/          # Reusable UI components (ConfirmModal, MathText, PDFViewer, ToastBanner, etc.)
-│   ├── pages/               # Top-level views
-│   │   ├── Dashboard.tsx    # Retention metrics, due cards, quick actions
-│   │   ├── Folders.tsx      # Subject/Folder/Deck explorer coordinator
-│   │   ├── folders/         # Modals (SubjectModal, FolderModal, DeckModal, CardModal, DeckDetailView)
-│   │   ├── CreateFlashcard.tsx # Multi-modal creation (Manual, Text, Image, PDF, Web)
-│   │   ├── Revision.tsx     # Flip, Quiz, and Teach revision arenas
-│   │   ├── Test.tsx         # Past paper scanning & test coordinator
-│   │   ├── test/            # Decomposed test views (TestDetailView, TestEditView, TestListView, etc.)
-│   │   ├── MockExam.tsx     # Timed mock exams, AI variable mutations, and grading
-│   │   ├── Scores.tsx       # Diagnostics, error analytics & mastery charts
-│   │   └── Settings.tsx     # AI models, FSRS parameters, notifications & themes
-│   ├── services/            # Core business logic & data access
-│   │   ├── db/              # Domain-split SQLite layer (subjects, folders, decks, flashcards, tests)
-│   │   ├── llm.ts           # Vision OCR, flashcard generation & exam evaluation
-│   │   ├── notificationService.ts # Throttled notification scheduling & study alerts
-│   │   └── pdf.ts           # PDF structured parsing and text extraction
-│   ├── utils/               # Helper utilities (image WebP compression, folderTree, qrCode)
-│   ├── App.tsx              # App coordinator & navigation guards
-│   └── App.css              # Theme tokens & glassmorphic styles
-│
-├── package.json
-└── tsconfig.json
+
+Or build individual platform bundles with the Tauri CLI:
+
+```bash
+# Windows / Desktop Installer (.msi / .exe)
+pnpm tauri build
+
+# Android Package (.apk)
+pnpm tauri android build --apk
 ```
 
 ---
 
-## ⚙️ Configuration & AI Models
+## ⚙️ AI Configuration & Model Routing
 
-Oxide Deck allows full customization of AI providers in the **Settings** tab:
-- **API Endpoints**: Compatible with standard OpenAI-compatible endpoints, Anthropic, Google Gemini, or local models via [Ollama](https://ollama.ai/).
-- **Vision Models**: Configure vision-capable models (e.g. `gpt-4o`, `claude-3-5-sonnet`, `llava`) for handwritten exam OCR and image-based flashcard generation.
-- **FSRS Tuning**: Adjust request retention ($R$) and inspect individual card decay parameters directly from the UI.
+Customize your AI settings under **Settings $\rightarrow$ AI Settings**:
+
+- **Multiple Providers**: Connect Google Gemini, Groq, or self-hosted local models (via Ollama or LM Studio).
+- **Task Routing**: Choose which model handles specific tasks (e.g. use a ultra-fast Groq model for flashcard quizzes and a vision-capable Gemini model for PDF scanning).
+- **Vision OCR & Diagrams**: Enable automatic visual snippet cropping and diagram extraction.
+- **Custom Personas**: Configure custom Socratic tutor personalities and feedback styles under **Settings $\rightarrow$ Personas**.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome!
+Contributions, issues, and feature suggestions are welcome!
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
@@ -221,4 +275,4 @@ Contributions, issues, and feature requests are welcome!
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE](LICENSE) file for details.
