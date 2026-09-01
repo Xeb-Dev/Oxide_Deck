@@ -142,7 +142,7 @@ pub async fn download_snapshot(
     let body = res
         .text()
         .await
-        .map_err(|e| format!("Failed to read body: {}", e))?;
+        .map_err(|e| format!("Failed to read remote file body: {}. The connection was interrupted while streaming from WebDAV. Try tapping 'Force Upload' in Settings to push a fresh snapshot.", e))?;
 
     if body.trim().is_empty() {
         return Ok(None);

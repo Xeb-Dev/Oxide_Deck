@@ -26,11 +26,18 @@ import {
   performWebDAVSync,
   forceUploadToWebDAV,
   forceDownloadFromWebDAV,
+  normalizeSyncTimestamp,
   SyncResult,
 } from "../../../services/syncEngine";
 
 export default function WebDAVSyncSettings() {
-  const [config, setConfig] = useState<WebDavConfig>(loadWebDavConfig());
+  const [config, setConfig] = useState<WebDavConfig>(() => {
+    const loaded = loadWebDavConfig();
+    return {
+      ...loaded,
+      lastSyncedAt: normalizeSyncTimestamp(loaded.lastSyncedAt),
+    };
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [intervalInputText, setIntervalInputText] = useState<string>(
     String(config.syncIntervalValue ?? 5)
@@ -132,7 +139,7 @@ export default function WebDAVSyncSettings() {
       const res = await performWebDAVSync(config);
       setSyncResult(res);
       if (res.success) {
-        setConfig((prev) => ({ ...prev, lastSyncedAt: res.timestamp }));
+        setConfig((prev) => ({ ...prev, lastSyncedAt: normalizeSyncTimestamp(res.timestamp) }));
       }
     } catch (e: any) {
       setSyncResult({
@@ -158,7 +165,7 @@ export default function WebDAVSyncSettings() {
       const res = await forceUploadToWebDAV(config);
       setSyncResult(res);
       if (res.success) {
-        setConfig((prev) => ({ ...prev, lastSyncedAt: res.timestamp }));
+        setConfig((prev) => ({ ...prev, lastSyncedAt: normalizeSyncTimestamp(res.timestamp) }));
       }
     } finally {
       setSyncing(false);
@@ -178,7 +185,7 @@ export default function WebDAVSyncSettings() {
       const res = await forceDownloadFromWebDAV(config);
       setSyncResult(res);
       if (res.success) {
-        setConfig((prev) => ({ ...prev, lastSyncedAt: res.timestamp }));
+        setConfig((prev) => ({ ...prev, lastSyncedAt: normalizeSyncTimestamp(res.timestamp) }));
       }
     } finally {
       setSyncing(false);
@@ -199,7 +206,7 @@ export default function WebDAVSyncSettings() {
   useEffect(() => {
     const handleSyncCompleted = (e: any) => {
       if (e.detail?.timestamp) {
-        setConfig((prev) => ({ ...prev, lastSyncedAt: e.detail.timestamp }));
+        setConfig((prev) => ({ ...prev, lastSyncedAt: normalizeSyncTimestamp(e.detail.timestamp) }));
       }
     };
     window.addEventListener("webdav-sync-completed", handleSyncCompleted);
@@ -209,16 +216,25 @@ export default function WebDAVSyncSettings() {
   const formatLastSync = (isoStr: string | null) => {
     if (!isoStr) return "Never synced";
     try {
-      const diffSec = Math.round((Date.now() - new Date(isoStr).getTime()) / 1000);
+      let d = new Date(isoStr);
+      if (isNaN(d.getTime())) {
+        const num = parseFloat(isoStr);
+        if (!isNaN(num) && num > 0) {
+          d = new Date(num < 1e11 ? num * 1000 : num);
+        }
+      }
+      if (isNaN(d.getTime())) return "Never synced";
+
+      const diffSec = Math.round((Date.now() - d.getTime()) / 1000);
       if (diffSec < 5) return "Just now";
       if (diffSec < 60) return `${diffSec}s ago`;
       const diffMin = Math.floor(diffSec / 60);
       if (diffMin < 60) return `${diffMin}m ago`;
       const diffHr = Math.floor(diffMin / 60);
       if (diffHr < 24) return `${diffHr}h ago`;
-      return new Date(isoStr).toLocaleDateString();
+      return d.toLocaleDateString();
     } catch {
-      return isoStr;
+      return "Never synced";
     }
   };
 

@@ -118,12 +118,10 @@ export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps)
       {/* Storage Information Card */}
       <SettingCard
         title="Local Database & Storage"
-        description="All decks, flashcards, tags, review logs, and tests are stored in a high-performance local SQLite database on your device."
         icon={<Database size={20} />}
       >
         <SettingRow
           label="Data Storage Engine"
-          description="Local-first offline SQLite database via Tauri SQL plugin."
         >
           <span className="settings-status-chip">Local SQLite</span>
         </SettingRow>
@@ -132,7 +130,6 @@ export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps)
       {/* Diagnostics & Logging Card */}
       <SettingCard
         title="System Diagnostics & Logs"
-        description="Diagnostic logs help debug app behavior, sync events, and database operations during release without recording personal content."
         icon={<FileText size={20} style={{ color: "var(--accent-color, #7C3AED)" }} />}
       >
         <SettingRow
@@ -176,7 +173,6 @@ export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps)
 
         <SettingRow
           label="Diagnostic Log Actions"
-          description="Download logs to your device, view and copy them directly in-app, or clear local log storage."
         >
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button
@@ -217,7 +213,6 @@ export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps)
       {/* Danger Zone Card */}
       <SettingCard
         title="Danger Zone"
-        description="Irreversible actions that modify or purge local application databases."
         icon={<ShieldAlert size={20} style={{ color: "var(--danger-color)" }} />}
         danger
       >

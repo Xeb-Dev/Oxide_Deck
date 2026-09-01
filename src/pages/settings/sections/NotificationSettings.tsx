@@ -31,7 +31,6 @@ export default function NotificationSettings({
       {/* Master Switch Card */}
       <SettingCard
         title="Notification System"
-        description="Master control for desktop popups, reminders, and study alerts."
         icon={<Bell size={20} />}
         headerAction={
           <button
@@ -46,7 +45,6 @@ export default function NotificationSettings({
       >
         <SettingRow
           label="Enable All Notifications"
-          description="Allow system notifications and background alerts for spaced repetition"
         >
           <label className="notion-switch">
             <input
@@ -64,7 +62,6 @@ export default function NotificationSettings({
           {/* Daily Schedule Card */}
           <SettingCard
             title="Daily Study Reminders"
-            description="Set custom reminder times for each day of the week to maintain your study routine."
             icon={<Clock size={20} />}
             headerAction={
               <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer", fontWeight: 600 }}>
@@ -130,12 +127,10 @@ export default function NotificationSettings({
           {/* Daily Streak Continuation Goal Card */}
           <SettingCard
             title="Streak Continuation Goal"
-            description="Choose the conditions required to count a study day and keep your streak alive."
             icon={<Target size={20} style={{ color: "var(--accent-color)" }} />}
           >
             <SettingRow
               label="Goal Intensity Preset"
-              description="Quick presets for daily study goals"
               vertical
             >
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", width: "100%", marginTop: "2px" }}>
@@ -160,7 +155,6 @@ export default function NotificationSettings({
 
             <SettingRow
               label="Minimum Cards Reviewed Per Day"
-              description="Cards required to satisfy today's streak requirement"
             >
               <input
                 type="number"
@@ -179,7 +173,6 @@ export default function NotificationSettings({
 
             <SettingRow
               label="Count AI Quizzes & Practice Tests"
-              description="Completing 1 full quiz or test exam session automatically satisfies the daily streak"
             >
               <input
                 type="checkbox"
@@ -190,7 +183,6 @@ export default function NotificationSettings({
 
             <SettingRow
               label="Count Teach Mode Tutor Sessions"
-              description="Completing a conversation with a teaching persona satisfies the daily streak"
             >
               <input
                 type="checkbox"
@@ -235,12 +227,10 @@ export default function NotificationSettings({
           {/* Threshold & Streak Saver Alerts Card */}
           <SettingCard
             title="Smart Alerts & Nudges"
-            description="Automated threshold warnings to prevent backlog accumulation and keep streaks alive."
             icon={<ShieldCheck size={20} />}
           >
             <SettingRow
               label="Due Cards Threshold Alert"
-              description="Notify when unreviewed due cards pile up past this limit"
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <input
@@ -266,7 +256,6 @@ export default function NotificationSettings({
 
             <SettingRow
               label="Evening Streak Saver"
-              description="Last-chance alert if you haven't reviewed any cards today"
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <input
@@ -292,12 +281,10 @@ export default function NotificationSettings({
           {/* Quiet Hours (DND) & Sound Preferences */}
           <SettingCard
             title="Quiet Hours & Audio"
-            description="Silence non-urgent notifications during rest hours and customize feedback sounds."
             icon={<Moon size={20} />}
           >
             <SettingRow
               label="Quiet Hours (Do Not Disturb)"
-              description="Suppress notifications between specified hours"
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <input
@@ -334,7 +321,6 @@ export default function NotificationSettings({
                   <Volume2 size={15} /> Sound Effects
                 </span>
               }
-              description="Play subtle audio cues when study reminders trigger"
             >
               <label className="notion-switch">
                 <input
@@ -352,7 +338,6 @@ export default function NotificationSettings({
                   <Bell size={15} /> In-App Banner Toasts
                 </span>
               }
-              description="Show non-intrusive floating banners inside the Oxide Deck interface"
             >
               <label className="notion-switch">
                 <input

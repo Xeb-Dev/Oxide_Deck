@@ -19,7 +19,6 @@ export default function PersonaSettings({
     <div className="settings-section-container">
       <SettingCard
         title="Custom Teaching Personas"
-        description="Create personalized AI tutor characters with specific pedagogical styles, tones, and feedback instructions."
         icon={<BrainCircuit size={20} />}
         headerAction={
           <button type="button" className="notion-btn secondary" onClick={onAddPersonality}>

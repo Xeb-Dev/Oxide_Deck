@@ -57,12 +57,10 @@ export default function AISettings({
       {/* Provider Selector Card */}
       <SettingCard
         title="Primary AI Provider"
-        description="Choose the default LLM engine used across flashcards, quizzes, and tutor features."
         icon={<Cpu size={20} />}
       >
         <SettingRow
           label="Default Provider"
-          description="Global engine used when tasks are set to inherit."
         >
           <select
             className="notion-input"
@@ -81,12 +79,10 @@ export default function AISettings({
       {provider === 'gemini' && (
         <SettingCard
           title="Google Gemini Credentials"
-          description="Configure Google AI Studio API key and default Gemini model."
           icon={<KeyRound size={20} />}
         >
           <SettingRow
             label="API Key"
-            description="Your key is stored securely in local browser/app storage."
             vertical
           >
             <div style={{ display: "flex", gap: "8px", width: "100%" }}>
@@ -111,7 +107,6 @@ export default function AISettings({
 
           <SettingRow
             label="Model Identifier"
-            description="e.g. gemini-3.1-flash-lite or gemini-2.5-pro"
             vertical
           >
             <input
@@ -128,12 +123,10 @@ export default function AISettings({
       {provider === 'groq' && (
         <SettingCard
           title="Groq API Credentials"
-          description="Configure Groq Cloud API key for ultra-fast LPU inference."
           icon={<KeyRound size={20} />}
         >
           <SettingRow
             label="API Key"
-            description="Your Groq key is stored locally in client storage."
             vertical
           >
             <div style={{ display: "flex", gap: "8px", width: "100%" }}>
@@ -158,7 +151,6 @@ export default function AISettings({
 
           <SettingRow
             label="Model Identifier"
-            description="e.g. llama-3.3-70b-versatile or llama-3.1-8b-instant"
             vertical
           >
             <input

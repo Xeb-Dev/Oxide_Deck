@@ -64,6 +64,29 @@ function getClientId(): string {
   return id;
 }
 
+export function normalizeSyncTimestamp(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  const d = new Date(ts);
+  if (!isNaN(d.getTime())) return d.toISOString();
+  const num = parseFloat(ts);
+  if (!isNaN(num) && num > 0) {
+    const fromNum = new Date(num < 1e11 ? num * 1000 : num);
+    if (!isNaN(fromNum.getTime())) return fromNum.toISOString();
+  }
+  return new Date().toISOString();
+}
+
+export function getSyncTimestampMs(ts: string | null | undefined): number {
+  if (!ts) return 0;
+  const d = new Date(ts);
+  if (!isNaN(d.getTime())) return d.getTime();
+  const num = parseFloat(ts);
+  if (!isNaN(num) && num > 0) {
+    return num < 1e11 ? num * 1000 : num;
+  }
+  return 0;
+}
+
 function getDeviceName(): string {
   if (typeof navigator !== "undefined" && navigator.userAgent) {
     if (/android/i.test(navigator.userAgent)) return "Android Phone";
@@ -581,8 +604,8 @@ export async function performWebDAVSync(customConfig?: WebDavConfig, allowHidden
         forceDownload: false,
       });
       if (res.success) {
-        config.lastSyncedAt = res.timestamp;
-        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        config.lastSyncedAt = normalizeSyncTimestamp(res.timestamp);
+        lastLocalDataModifiedAt = getSyncTimestampMs(config.lastSyncedAt);
         saveWebDavConfig(config);
         await getStats().catch(() => {});
       }
@@ -711,7 +734,7 @@ export async function performOptimizedPeriodicSync(customConfig?: WebDavConfig):
   }
 
   // 1. Check if local database was modified since last successful sync
-  const lastSyncTime = config.lastSyncedAt ? new Date(config.lastSyncedAt).getTime() : 0;
+  const lastSyncTime = getSyncTimestampMs(config.lastSyncedAt);
   const localChanged = !config.lastSyncedAt || lastLocalDataModifiedAt > lastSyncTime;
 
   // 2. Check remote metadata (HEAD request - near-zero bandwidth)
@@ -776,8 +799,8 @@ export async function forceUploadToWebDAV(customConfig?: WebDavConfig): Promise<
         forceDownload: false,
       });
       if (res.success) {
-        config.lastSyncedAt = res.timestamp;
-        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        config.lastSyncedAt = normalizeSyncTimestamp(res.timestamp);
+        lastLocalDataModifiedAt = getSyncTimestampMs(config.lastSyncedAt);
         saveWebDavConfig(config);
       }
       return res;
@@ -851,8 +874,8 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
         forceDownload: true,
       });
       if (res.success) {
-        config.lastSyncedAt = res.timestamp;
-        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        config.lastSyncedAt = normalizeSyncTimestamp(res.timestamp);
+        lastLocalDataModifiedAt = getSyncTimestampMs(config.lastSyncedAt);
         saveWebDavConfig(config);
         await getStats().catch(() => {});
       }
