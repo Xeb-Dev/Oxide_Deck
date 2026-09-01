@@ -41,6 +41,27 @@ export default function WebDAVSyncSettings() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncProgressMessage, setSyncProgressMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) => {
+        listen<{ stage: string; message: string; current?: number; total?: number }>(
+          "sync-progress",
+          (event) => {
+            setSyncProgressMessage(event.payload.message);
+          }
+        ).then((unsub) => {
+          unlisten = unsub;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   useEffect(() => {
     setIntervalInputText(String(config.syncIntervalValue ?? 5));
@@ -373,6 +394,26 @@ export default function WebDAVSyncSettings() {
             </button>
           </div>
         </SettingRow>
+
+        {syncing && syncProgressMessage && (
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: "6px",
+              background: "rgba(99, 102, 241, 0.08)",
+              border: "1px solid rgba(99, 102, 241, 0.25)",
+              margin: "6px 0 10px 0",
+              fontSize: "0.82rem",
+              color: "var(--accent-color)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <RefreshCw size={13} className="spin-animation" />
+            <span>{syncProgressMessage}</span>
+          </div>
+        )}
 
         {syncResult && (
           <div

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { X, ImagePlus } from "lucide-react";
 import { convertToWebP } from "../../utils/image";
+import FlashcardImage from "../../components/FlashcardImage";
 import type { StatusVariant } from "../../components/StatusBanner";
 import type { Flashcard } from "../../services/db";
 
@@ -169,7 +170,7 @@ export default function CardModal({
               />
               {cardFrontImageUrl && (
                 <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
-                  <img src={cardFrontImageUrl} alt="Front WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                  <FlashcardImage src={cardFrontImageUrl} alt="Front WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
                   <span style={{ flex: 1, fontSize: "0.76rem", fontWeight: 600, color: "var(--accent-color)" }}>📷 Front Image Attached</span>
                   <button type="button" className="notion-btn secondary" style={{ padding: "2px 6px", fontSize: "0.7rem", color: "#e11d48" }} onClick={() => setCardFrontImageUrl(null)}>Remove</button>
                 </div>
@@ -219,7 +220,7 @@ export default function CardModal({
               />
               {cardBackImageUrl && (
                 <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", border: "1px solid var(--accent-color)", borderRadius: "6px", backgroundColor: "var(--bg-secondary)" }}>
-                  <img src={cardBackImageUrl} alt="Back WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
+                  <FlashcardImage src={cardBackImageUrl} alt="Back WebP" style={{ maxWidth: "60px", maxHeight: "45px", objectFit: "contain", borderRadius: "4px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }} />
                   <span style={{ flex: 1, fontSize: "0.76rem", fontWeight: 600, color: "var(--accent-color)" }}>📷 Back Image Attached</span>
                   <button type="button" className="notion-btn secondary" style={{ padding: "2px 6px", fontSize: "0.7rem", color: "#e11d48" }} onClick={() => setCardBackImageUrl(null)}>Remove</button>
                 </div>

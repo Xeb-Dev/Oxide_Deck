@@ -230,5 +230,110 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 14,
+            description: "add_updated_at_and_sync_tombstones",
+            sql: "
+                ALTER TABLE flashcards ADD COLUMN updated_at DATETIME;
+                ALTER TABLE decks ADD COLUMN updated_at DATETIME;
+                ALTER TABLE folders ADD COLUMN updated_at DATETIME;
+                ALTER TABLE subjects ADD COLUMN updated_at DATETIME;
+                ALTER TABLE tests ADD COLUMN updated_at DATETIME;
+
+                UPDATE flashcards SET updated_at = COALESCE(last_review, created_at, CURRENT_TIMESTAMP);
+                UPDATE decks SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+                UPDATE folders SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+                UPDATE subjects SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+                UPDATE tests SET updated_at = COALESCE(test_date, created_at, CURRENT_TIMESTAMP);
+
+                CREATE TABLE IF NOT EXISTS sync_tombstones (
+                    entity_id TEXT PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TRIGGER IF NOT EXISTS trg_flashcards_updated_at
+                AFTER UPDATE ON flashcards
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE flashcards SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_decks_updated_at
+                AFTER UPDATE ON decks
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE decks SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_folders_updated_at
+                AFTER UPDATE ON folders
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE folders SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_subjects_updated_at
+                AFTER UPDATE ON subjects
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE subjects SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_tests_updated_at
+                AFTER UPDATE ON tests
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE tests SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_flashcards_delete_tombstone
+                AFTER DELETE ON flashcards
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'flashcard', CURRENT_TIMESTAMP);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_decks_delete_tombstone
+                AFTER DELETE ON decks
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'deck', CURRENT_TIMESTAMP);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_folders_delete_tombstone
+                AFTER DELETE ON folders
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'folder', CURRENT_TIMESTAMP);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_subjects_delete_tombstone
+                AFTER DELETE ON subjects
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'subject', CURRENT_TIMESTAMP);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_tests_delete_tombstone
+                AFTER DELETE ON tests
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'test', CURRENT_TIMESTAMP);
+                END;
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
+

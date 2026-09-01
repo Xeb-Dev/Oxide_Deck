@@ -177,8 +177,8 @@ function App() {
   }, []);
 
   const handleNavChange = (newNav: NavigationState) => {
-    if (currentNav.page === 'revision' && newNav.page !== 'revision') {
-      triggerBackgroundSyncIfEnabled("exit-revision");
+    if (currentNav.page === 'revision' && (newNav.page !== 'revision' || currentNav.deckId !== newNav.deckId)) {
+      triggerBackgroundSyncIfEnabled("exit-revision", true);
     }
 
     if (isMockExamActive && newNav.page !== 'mock') {

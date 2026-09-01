@@ -1,5 +1,6 @@
 mod migrations;
 mod logger;
+mod sync;
 
 #[tauri::command]
 async fn fetch_url_html(url: String) -> Result<String, String> {
@@ -171,7 +172,9 @@ pub fn run() {
             logger::get_logs_summary,
             logger::export_all_logs,
             logger::save_logs_to_file,
-            logger::clear_all_logs
+            logger::clear_all_logs,
+            sync::sync_run_native,
+            sync::resolve_media_file_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

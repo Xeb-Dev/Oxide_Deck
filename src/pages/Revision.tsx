@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import MathText from "../components/MathText";
 import StatusBanner from "../components/StatusBanner";
+import FlashcardImage from "../components/FlashcardImage";
 
 interface RevisionProps {
   currentNav: {
@@ -41,6 +42,12 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [outgoingCard, setOutgoingCard] = useState<{ card: Flashcard; isFlipped: boolean; animClass: string } | null>(null);
 
   const isTransitioningRef = useRef(false);
+  const hasReviewedCardsRef = useRef(false);
+
+  const handleExitSession = (targetNav: any = { page: 'dashboard' }) => {
+    triggerBackgroundSyncIfEnabled("exit-revision", true);
+    setCurrentNav(targetNav);
+  };
 
   // Quiz states
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -237,6 +244,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   // FLASHCARD FSRS GRADING (Simultaneous outgoing fly-out left & incoming spring fly-in right)
   const handleCardGrade = async (rating: Rating) => {
     if (cards.length === 0 || isTransitioningRef.current) return;
+    hasReviewedCardsRef.current = true;
     const currentCard = cards[currentIndex];
     isTransitioningRef.current = true;
 
@@ -289,14 +297,22 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
 
   // Auto-sync progress to WebDAV cloud upon exiting revision or session completion
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      triggerBackgroundSyncIfEnabled("exit-revision", true);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+
     return () => {
-      triggerBackgroundSyncIfEnabled("exit-revision");
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+      triggerBackgroundSyncIfEnabled("exit-revision", true);
     };
   }, []);
 
   useEffect(() => {
     if (sessionCompleted) {
-      triggerBackgroundSyncIfEnabled("revision-session-completed");
+      triggerBackgroundSyncIfEnabled("revision-session-completed", true);
     }
   }, [sessionCompleted]);
 
@@ -309,6 +325,11 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
       }
 
       if (revisionMode === 'flashcard' && !sessionCompleted) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          handleExitSession({ page: 'dashboard' });
+          return;
+        }
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
           handleBrowsePrev();
@@ -497,6 +518,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
 
       // Record in SQLite history
       await addRevisionHistory(null, 'quiz', scorePct);
+      hasReviewedCardsRef.current = true;
     } catch (e) {
       console.error(e);
     } finally {
@@ -534,7 +556,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           <button
             className="notion-btn"
             style={{ marginTop: "20px" }}
-            onClick={() => setCurrentNav({ page: 'folders', deckId: currentNav.deckId })}
+            onClick={() => handleExitSession({ page: 'folders', deckId: currentNav.deckId })}
           >
             Back to Deck
           </button>
@@ -554,7 +576,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
         <button 
           className="notion-btn" 
           style={{ marginTop: "20px" }}
-          onClick={() => setCurrentNav({ page: 'create' })}
+          onClick={() => handleExitSession({ page: 'create' })}
         >
           Create Cards
         </button>
@@ -572,7 +594,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           Excellent work. You have reviewed all scheduled cards for {deck?.id === 'all' ? <strong>Daily Review (All Due Cards)</strong> : <>the deck <strong>{deck?.name}</strong></>}.
         </p>
         <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-          <button className="notion-btn" onClick={() => setCurrentNav({ page: 'dashboard' })}>
+          <button className="notion-btn" onClick={() => handleExitSession({ page: 'dashboard' })}>
             Back to Dashboard
           </button>
           <button className="notion-btn secondary" onClick={() => loadDeckAndCards(currentNav.deckId || 'all')}>
@@ -698,7 +720,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center", marginTop: "12px", border: "1px solid var(--border-color)", padding: "20px", borderRadius: "10px", backgroundColor: "var(--accent-light)" }}>
               <div style={{ fontSize: "1.2rem", fontWeight: 700 }}>Quiz Grade: {quizFinalScore}%</div>
               <div style={{ display: "flex", gap: "8px" }}>
-                <button className="notion-btn" onClick={() => setCurrentNav({ page: 'dashboard' })}>
+                <button className="notion-btn" onClick={() => handleExitSession({ page: 'dashboard' })}>
                   Dashboard
                 </button>
                 <button className="notion-btn secondary" onClick={() => loadDeckAndCards(currentNav.deckId!)}>
@@ -740,7 +762,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             {/* Front Image rendering */}
             {(card.front_image_url || card.image_url) && (
               <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
-                <img
+                <FlashcardImage
                   src={card.front_image_url || card.image_url!}
                   alt="Front Card Image"
                   style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
@@ -764,7 +786,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             {/* Back Image rendering */}
             {card.back_image_url && (
               <div style={{ margin: "10px 0", textAlign: "center", width: "100%" }}>
-                <img
+                <FlashcardImage
                   src={card.back_image_url}
                   alt="Back Card Image"
                   style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", borderRadius: "8px", border: "1px solid var(--border-color)", backgroundColor: "#fff" }}
@@ -829,7 +851,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
             )}
           </div>
         </div>
-        <button className="notion-btn secondary" onClick={() => setCurrentNav({ page: 'dashboard' })}>
+        <button className="notion-btn secondary" onClick={() => handleExitSession({ page: 'dashboard' })}>
           Exit Session
         </button>
       </div>
@@ -867,7 +889,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           </div>
           <button 
             className="notion-btn secondary revision-exit-btn" 
-            onClick={() => setCurrentNav({ page: 'dashboard' })}
+            onClick={() => handleExitSession({ page: 'dashboard' })}
           >
             Exit
           </button>

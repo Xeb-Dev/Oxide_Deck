@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getDB } from "./db/connection";
 import {
   Subject,
@@ -102,7 +103,7 @@ export async function exportLocalSyncPackage(): Promise<SyncPackage> {
     exported_at: new Date().toISOString(),
     client_id: getClientId(),
     device_name: getDeviceName(),
-    schema_version: 13,
+    schema_version: 14,
     subjects,
     folders,
     decks,
@@ -219,7 +220,7 @@ export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): Sync
     exported_at: new Date().toISOString(),
     client_id: getClientId(),
     device_name: getDeviceName(),
-    schema_version: 13,
+    schema_version: 14,
     subjects: Array.from(subjectMap.values()),
     folders: Array.from(folderMap.values()),
     decks: Array.from(deckMap.values()),
@@ -277,6 +278,8 @@ export async function applySyncPackageToLocalDB(
   const analysisSet = new Set((localAnalysisRows || []).map((a) => a.id));
   const errorSet = new Set((localErrorRows || []).map((e) => e.id));
 
+  await db.execute("BEGIN TRANSACTION");
+  try {
   // 1. Subjects (only insert/update if dirty or new)
   for (const s of pkg.subjects || []) {
       const existing = subjectMap.get(s.id);
@@ -515,6 +518,14 @@ export async function applySyncPackageToLocalDB(
       );
     }
 
+    await db.execute("COMMIT");
+  } catch (txErr) {
+    try {
+      await db.execute("ROLLBACK");
+    } catch {}
+    throw txErr;
+  }
+
   // Refresh Stats
   await getStats().catch(() => {});
 }
@@ -532,7 +543,7 @@ export function markLocalDataChanged(): void {
 /**
  * Main WebDAV Synchronization Orchestrator (Bidirectional Merge).
  */
-export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<SyncResult> {
+export async function performWebDAVSync(customConfig?: WebDavConfig, allowHidden = false): Promise<SyncResult> {
   const config = customConfig || loadWebDavConfig();
   if (!config.enabled && !customConfig) {
     return {
@@ -542,8 +553,8 @@ export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<Sy
     };
   }
 
-  // If the app is in the background or screen is asleep, let Android WorkManager handle sync
-  if (typeof document !== "undefined" && document.visibilityState === 'hidden' && !customConfig) {
+  // If the app is in the background or screen is asleep, let Android WorkManager handle sync unless explicitly allowed
+  if (!allowHidden && typeof document !== "undefined" && document.visibilityState === 'hidden' && !customConfig) {
     return {
       success: true,
       message: "In-app sync paused while screen is off / app is hidden (managed by WorkManager).",
@@ -560,6 +571,41 @@ export async function performWebDAVSync(customConfig?: WebDavConfig): Promise<Sy
   }
 
   isSyncInProgress = true;
+
+  const isTauri = typeof window !== "undefined" && Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
+  if (isTauri) {
+    try {
+      const res = await invoke<SyncResult>("sync_run_native", {
+        config,
+        forceUpload: false,
+        forceDownload: false,
+      });
+      if (res.success) {
+        config.lastSyncedAt = res.timestamp;
+        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        saveWebDavConfig(config);
+        await getStats().catch(() => {});
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: res }));
+      }
+      return res;
+    } catch (nativeErr: any) {
+      logger.error("WebDAV-Sync", "Rust native sync error", nativeErr);
+      const errText = typeof nativeErr === "string" ? nativeErr : nativeErr?.message || "Sync failed";
+      const errRes: SyncResult = {
+        success: false,
+        message: `Sync failed: ${errText}`,
+        timestamp: new Date().toISOString(),
+      };
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: errRes }));
+      }
+      return errRes;
+    } finally {
+      isSyncInProgress = false;
+    }
+  }
 
   try {
     // 1. Export local dataset
@@ -720,6 +766,32 @@ export async function forceUploadToWebDAV(customConfig?: WebDavConfig): Promise<
   }
 
   isSyncInProgress = true;
+
+  const isTauriUpload = typeof window !== "undefined" && Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
+  if (isTauriUpload) {
+    try {
+      const res = await invoke<SyncResult>("sync_run_native", {
+        config,
+        forceUpload: true,
+        forceDownload: false,
+      });
+      if (res.success) {
+        config.lastSyncedAt = res.timestamp;
+        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        saveWebDavConfig(config);
+      }
+      return res;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Force upload failed: ${err?.message || err}`,
+        timestamp: new Date().toISOString(),
+      };
+    } finally {
+      isSyncInProgress = false;
+    }
+  }
+
   try {
     const localPkg = await exportLocalSyncPackage();
     const jsonStr = JSON.stringify(localPkg);
@@ -769,6 +841,33 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
   }
 
   isSyncInProgress = true;
+
+  const isTauriDownload = typeof window !== "undefined" && Boolean((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__);
+  if (isTauriDownload) {
+    try {
+      const res = await invoke<SyncResult>("sync_run_native", {
+        config,
+        forceUpload: false,
+        forceDownload: true,
+      });
+      if (res.success) {
+        config.lastSyncedAt = res.timestamp;
+        lastLocalDataModifiedAt = new Date(res.timestamp).getTime();
+        saveWebDavConfig(config);
+        await getStats().catch(() => {});
+      }
+      return res;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Force download failed: ${err?.message || err}`,
+        timestamp: new Date().toISOString(),
+      };
+    } finally {
+      isSyncInProgress = false;
+    }
+  }
+
   try {
     const remoteRawJson = await downloadSyncPackage(config);
     if (!remoteRawJson) {
@@ -811,9 +910,9 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
 let syncDebounceTimer: any = null;
 
 /**
- * Debounced background sync trigger for data creation/modification events and revision exits.
+ * Debounced or immediate background sync trigger for data creation/modification events and revision exits.
  */
-export function triggerBackgroundSyncIfEnabled(reason?: string) {
+export function triggerBackgroundSyncIfEnabled(reason?: string, immediate = false) {
   markLocalDataChanged();
 
   const config = loadWebDavConfig();
@@ -836,12 +935,19 @@ export function triggerBackgroundSyncIfEnabled(reason?: string) {
 
   if (syncDebounceTimer) {
     clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = null;
   }
 
-  // Debounce by 400ms to allow smooth UI transitions
-  syncDebounceTimer = setTimeout(() => {
-    performWebDAVSync().catch((e) => {
+  const doSync = () => {
+    performWebDAVSync(undefined, isReviewReason).catch((e) => {
       console.warn(`Background auto-sync (${reason || "data change"}) failed:`, e);
     });
-  }, 400);
+  };
+
+  if (immediate) {
+    doSync();
+  } else {
+    // Debounce by 400ms to allow smooth UI transitions
+    syncDebounceTimer = setTimeout(doSync, 400);
+  }
 }

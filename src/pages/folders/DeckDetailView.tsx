@@ -10,6 +10,7 @@ import {
   FileText,
 } from "lucide-react";
 import MathText from "../../components/MathText";
+import FlashcardImage from "../../components/FlashcardImage";
 import { stateLabel } from "../../services/fsrs";
 import { setDragData } from "../../utils/dnd";
 import type { Deck, Flashcard } from "../../services/db";
@@ -152,7 +153,7 @@ export default function DeckDetailView({
                     <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)" }}>Front:</span>
                     {(card.front_image_url || card.image_url) && (
                       <div style={{ marginTop: "4px" }}>
-                        <img
+                        <FlashcardImage
                           src={card.front_image_url || card.image_url!}
                           alt="Front Image"
                           style={{
@@ -176,7 +177,7 @@ export default function DeckDetailView({
                     <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)" }}>Back:</span>
                     {card.back_image_url && (
                       <div style={{ marginTop: "4px" }}>
-                        <img
+                        <FlashcardImage
                           src={card.back_image_url}
                           alt="Back Image"
                           style={{

@@ -319,6 +319,10 @@ export async function downloadSyncPackage(
     throw new Error(`Failed to download sync data: HTTP ${res.status} (${res.status_text})`);
   }
 
+  if (!res.body || res.body.trim().length === 0) {
+    return null;
+  }
+
   return res.body;
 }
 
