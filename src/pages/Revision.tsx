@@ -3,7 +3,7 @@ import {
   getFlashcards, getDueFlashcards, getAllFlashcards, reviewFlashcard, addRevisionHistory,
   Flashcard, Deck, getDecks
 } from "../services/db";
-import { Rating, scoreToRating } from "../services/fsrs";
+import { Rating, State, scoreToRating } from "../services/fsrs";
 import { triggerBackgroundSyncIfEnabled } from "../services/syncEngine";
 import {
   validateFlashcardAnswer, runTeachingDialogue, generateQuizFromFlashcards, QuizQuestion, ValidationResult,
@@ -39,7 +39,7 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [validatingAnswer, setValidatingAnswer] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [animClass, setAnimClass] = useState<string>("");
-  const [outgoingCard, setOutgoingCard] = useState<{ card: Flashcard; isFlipped: boolean; animClass: string } | null>(null);
+  const [outgoingCard, setOutgoingCard] = useState<{ card: Flashcard; isFlipped: boolean; animClass: string; keyIndex?: number } | null>(null);
 
   const isTransitioningRef = useRef(false);
   const hasReviewedCardsRef = useRef(false);
@@ -197,7 +197,8 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     setOutgoingCard({
       card: currentCard,
       isFlipped,
-      animClass: "anim-slide-right-out"
+      animClass: "anim-slide-right-out",
+      keyIndex: currentIndex
     });
 
     // Advance to previous card simultaneously with incoming slide in
@@ -224,7 +225,8 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     setOutgoingCard({
       card: currentCard,
       isFlipped,
-      animClass: "anim-slide-left-out"
+      animClass: "anim-slide-left-out",
+      keyIndex: currentIndex
     });
 
     // Advance to next card simultaneously with incoming slide in
@@ -249,15 +251,21 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
     isTransitioningRef.current = true;
 
     try {
-      // 1. Write to database
-      reviewFlashcard(currentCard.id, rating).catch(console.error);
+      // 1. Let FSRS review the flashcard and determine next schedule
+      const result = await reviewFlashcard(currentCard.id, rating);
+      const shouldRequeue = result?.requeuedInSameSession ?? false;
+      const updatedCard = result?.updatedCard ?? currentCard;
 
-      if (currentIndex + 1 < cards.length) {
-        // Set outgoing card flying left
+      if (shouldRequeue) {
+        // FSRS decided this card needs to be reviewed again in the same session
+        setCards(prev => [...prev, updatedCard]);
+
+        // Outgoing card flies out
         setOutgoingCard({
           card: currentCard,
           isFlipped,
-          animClass: "anim-grade-out"
+          animClass: "anim-grade-out",
+          keyIndex: currentIndex
         });
 
         // Advance to next card simultaneously with spring fly-in from right
@@ -272,12 +280,33 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           setAnimClass("");
           isTransitioningRef.current = false;
         }, 440);
-      } else {
-        // Last card in deck
+      } else if (currentIndex + 1 < cards.length) {
+        // FSRS scheduled card for future days, advance to next card in deck
         setOutgoingCard({
           card: currentCard,
           isFlipped,
-          animClass: "anim-grade-out"
+          animClass: "anim-grade-out",
+          keyIndex: currentIndex
+        });
+
+        setCurrentIndex(prev => prev + 1);
+        setIsFlipped(false);
+        setUserTypedAnswer("");
+        setAiValidation(null);
+        setAnimClass("anim-grade-in");
+
+        setTimeout(() => {
+          setOutgoingCard(null);
+          setAnimClass("");
+          isTransitioningRef.current = false;
+        }, 440);
+      } else {
+        // Last card in deck and not requeued -> Session complete!
+        setOutgoingCard({
+          card: currentCard,
+          isFlipped,
+          animClass: "anim-grade-out",
+          keyIndex: currentIndex
         });
 
         setTimeout(() => {
@@ -739,9 +768,11 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const selectedPersona = availablePersonalities.find(persona => persona.id === selectedPersonaId);
 
   const renderCardFace = (card: Flashcard, flipped: boolean, isOutgoing: boolean, animClassName: string) => {
+    const isLearningCard = card.state === State.Learning || card.state === State.Relearning;
+
     return (
       <div 
-        key={isOutgoing ? `outgoing-${card.id}` : `current-${card.id}`}
+        key={isOutgoing ? `outgoing-${card.id}-${outgoingCard?.keyIndex ?? 0}` : `current-${card.id}-${currentIndex}`}
         className={`flashcard-wrapper ${flipped ? 'flipped' : ''} ${animClassName} ${isOutgoing ? 'outgoing-card' : 'incoming-card'}`}
         onTouchStart={isOutgoing ? undefined : handleTouchStart}
         onTouchMove={isOutgoing ? undefined : handleTouchMove}
@@ -753,11 +784,21 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           {/* Front card face */}
           <div className="flashcard-face front">
             <span className="flashcard-side-label">Front (Question)</span>
-            {((card as any).deck_name || card.tags) && (
-              <span className="flashcard-tags-badge">
-                {(card as any).deck_name ? `📁 ${(card as any).deck_name}` : card.tags?.split(',')[0]}
-              </span>
-            )}
+            <div className="flashcard-top-badges">
+              {isLearningCard && (
+                <span 
+                  className="flashcard-learning-badge"
+                  title="Card is in learning / re-review in this session"
+                >
+                  <RotateCcw size={10} /> Learning
+                </span>
+              )}
+              {((card as any).deck_name || card.tags) && (
+                <span className="flashcard-tags-badge">
+                  {(card as any).deck_name ? `📁 ${(card as any).deck_name}` : card.tags?.split(',')[0]}
+                </span>
+              )}
+            </div>
             
             {/* Front Image rendering */}
             {(card.front_image_url || card.image_url) && (
@@ -782,6 +823,16 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
           {/* Back card face */}
           <div className="flashcard-face back">
             <span className="flashcard-side-label">Back (Reference Answer)</span>
+            <div className="flashcard-top-badges">
+              {isLearningCard && (
+                <span 
+                  className="flashcard-learning-badge"
+                  title="Card is in learning / re-review in this session"
+                >
+                  <RotateCcw size={10} /> Learning
+                </span>
+              )}
+            </div>
             
             {/* Back Image rendering */}
             {card.back_image_url && (

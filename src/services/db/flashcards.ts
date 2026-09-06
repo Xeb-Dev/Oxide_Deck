@@ -95,12 +95,17 @@ export async function moveFlashcardToDeck(cardId: string, deckId: string): Promi
   triggerBackgroundSyncIfEnabled("move flashcard");
 }
 
+export interface ReviewResult {
+  updatedCard: Flashcard;
+  requeuedInSameSession: boolean;
+}
+
 // FSRS SPACED REPETITION ALGORITHM
 // rating: 1=Again, 2=Hard, 3=Good, 4=Easy (ts-fsrs Rating enum)
-export async function reviewFlashcard(id: string, rating: number): Promise<void> {
+export async function reviewFlashcard(id: string, rating: number): Promise<ReviewResult | null> {
   const db = await getDB();
   const cardResults = await db.select<Flashcard[]>("SELECT * FROM flashcards WHERE id = $1", [id]);
-  if (cardResults.length === 0) return;
+  if (cardResults.length === 0) return null;
   const row = cardResults[0];
 
   const f = await getFSRS(db);
@@ -115,6 +120,28 @@ export async function reviewFlashcard(id: string, rating: number): Promise<void>
   );
 
   await addRevisionHistory(id, 'flashcard', ratingToScore(rating as Rating), rating);
+
+  // FSRS decides whether the card needs in-session review:
+  // In FSRS, scheduled_days === 0 represents short-term / intraday review (interval in minutes)
+  const requeuedInSameSession = cols.scheduled_days === 0;
+
+  const updatedFlashcard: Flashcard = {
+    ...row,
+    stability: cols.stability,
+    difficulty: cols.difficulty,
+    state: cols.state,
+    reps: cols.reps,
+    lapses: cols.lapses,
+    elapsed_days: cols.elapsed_days,
+    scheduled_days: cols.scheduled_days,
+    last_review: cols.last_review,
+    next_review: cols.next_review,
+  };
+
+  return {
+    updatedCard: updatedFlashcard,
+    requeuedInSameSession
+  };
 }
 
 export interface DueDeckSummary {

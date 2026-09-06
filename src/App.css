@@ -1999,6 +1999,34 @@ select.form-input:disabled {
   letter-spacing: 0.05em;
 }
 
+.flashcard-top-badges {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.flashcard-top-badges .flashcard-tags-badge {
+  position: static;
+}
+
+.flashcard-learning-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  background-color: rgba(239, 68, 68, 0.12);
+  color: var(--danger-color);
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+}
+
 .flashcard-tags-badge {
   position: absolute;
   top: 16px;
@@ -2422,10 +2450,21 @@ select.form-input:disabled {
     max-height: 85% !important;
   }
 
-  .flashcard-side-label,
-  .flashcard-tags-badge {
+  .flashcard-side-label {
     top: 12px !important;
     font-size: 0.72rem !important;
+  }
+
+  .flashcard-top-badges {
+    top: 12px !important;
+    right: 14px !important;
+    gap: 4px !important;
+  }
+
+  .flashcard-tags-badge,
+  .flashcard-learning-badge {
+    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
   }
 
   .revision-grading-box {
