@@ -26,6 +26,7 @@ interface NavigationState {
 }
 
 import ToastBanner from "./components/ToastBanner";
+import VersionUpdateBanner from "./components/VersionUpdateBanner";
 import ConfirmModal from "./components/ConfirmModal";
 
 function App() {
@@ -246,6 +247,7 @@ function App() {
   return (
     <>
       <ToastBanner />
+      <VersionUpdateBanner />
       <ConfirmModal
         isOpen={showLeaveConfirm}
         title="Leave Mock Exam?"

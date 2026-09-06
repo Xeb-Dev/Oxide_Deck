@@ -57,7 +57,7 @@ pub async fn export_local_package(
     let test_questions = sqlx::query_as::<_, TestQuestion>(
         r#"
         SELECT id, test_id, type, question, options, correct_answer, user_answer, score,
-               math_work, source_page, created_at
+               math_work, source_page, created_at, updated_at
         FROM test_questions ORDER BY created_at ASC
         "#,
     )
@@ -66,7 +66,7 @@ pub async fn export_local_package(
 
     let test_analyses = sqlx::query_as::<_, TestAnalysis>(
         r#"
-        SELECT id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at
+        SELECT id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at, updated_at
         FROM test_analyses ORDER BY created_at ASC
         "#,
     )
@@ -76,7 +76,7 @@ pub async fn export_local_package(
     let test_errors = sqlx::query_as::<_, TestError>(
         r#"
         SELECT id, test_id, subject_id, question_id, question_text, user_answer, correct_answer,
-               error_reason, score, created_at
+               error_reason, score, created_at, updated_at
         FROM test_errors ORDER BY created_at ASC
         "#,
     )
@@ -84,24 +84,31 @@ pub async fn export_local_package(
     .await?;
 
     let tombstones = sqlx::query_as::<_, Tombstone>(
-        "SELECT entity_id, entity_type, deleted_at FROM sync_tombstones ORDER BY deleted_at ASC",
+        "SELECT entity_id, entity_type, deleted_at FROM sync_tombstones WHERE deleted_at >= datetime('now', '-60 days') ORDER BY deleted_at ASC",
     )
     .fetch_all(pool)
     .await
     .unwrap_or_default();
 
-    let fsrs_row = sqlx::query_scalar::<_, String>(
-        "SELECT params FROM fsrs_parameters WHERE id = 1",
+    let fsrs_row = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT params, updated_at FROM fsrs_parameters WHERE id = 1",
     )
     .fetch_optional(pool)
     .await?;
 
+    let (fsrs_params, fsrs_updated_at) = match fsrs_row {
+        Some((p, u)) => (Some(p), u),
+        None => (None, None),
+    };
+
     Ok(SyncPackage {
         version: "1.0".to_string(),
+        app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         exported_at: crate::sync::merger::chrono_now_iso(),
         client_id: client_id.to_string(),
         device_name: device_name.to_string(),
-        schema_version: 14,
+        schema_version: 16,
+        min_compatible_app_version: Some("0.1.0".to_string()),
         subjects,
         folders,
         decks,
@@ -111,7 +118,8 @@ pub async fn export_local_package(
         test_questions,
         test_analyses,
         test_errors,
-        fsrs_parameters: fsrs_row,
+        fsrs_parameters: fsrs_params,
+        fsrs_updated_at,
         notification_settings: None,
         tombstones,
     })
@@ -122,9 +130,12 @@ pub async fn apply_sync_package_to_db(
     pool: &SqlitePool,
     pkg: &SyncPackage,
 ) -> Result<(), sqlx::Error> {
+    let _ = sqlx::query("PRAGMA foreign_keys = ON;").execute(pool).await;
+    let _ = sqlx::query("PRAGMA recursive_triggers = ON;").execute(pool).await;
+
     let mut tx = pool.begin().await?;
 
-    // 0. Remove entities marked as deleted in tombstones
+    // 0. Remove entities marked as deleted in tombstones (with cascade cleanup)
     for t in &pkg.tombstones {
         match t.entity_type.as_str() {
             "flashcard" => {
@@ -134,25 +145,75 @@ pub async fn apply_sync_package_to_db(
                     .await;
             }
             "deck" => {
+                let _ = sqlx::query("DELETE FROM flashcards WHERE deck_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
                 let _ = sqlx::query("DELETE FROM decks WHERE id = ?")
                     .bind(&t.entity_id)
                     .execute(&mut *tx)
                     .await;
             }
             "folder" => {
+                let _ = sqlx::query("UPDATE folders SET parent_folder_id = NULL WHERE parent_folder_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("UPDATE decks SET folder_id = NULL WHERE folder_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
                 let _ = sqlx::query("DELETE FROM folders WHERE id = ?")
                     .bind(&t.entity_id)
                     .execute(&mut *tx)
                     .await;
             }
             "subject" => {
+                let _ = sqlx::query("UPDATE folders SET subject_id = NULL WHERE subject_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM test_questions WHERE test_id IN (SELECT id FROM tests WHERE subject_id = ?)")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM test_analyses WHERE subject_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM test_errors WHERE subject_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM tests WHERE subject_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
                 let _ = sqlx::query("DELETE FROM subjects WHERE id = ?")
                     .bind(&t.entity_id)
                     .execute(&mut *tx)
                     .await;
             }
             "test" => {
+                let _ = sqlx::query("DELETE FROM test_questions WHERE test_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM test_analyses WHERE test_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+                let _ = sqlx::query("DELETE FROM test_errors WHERE test_id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
                 let _ = sqlx::query("DELETE FROM tests WHERE id = ?")
+                    .bind(&t.entity_id)
+                    .execute(&mut *tx)
+                    .await;
+            }
+            "test_question" => {
+                let _ = sqlx::query("DELETE FROM test_questions WHERE id = ?")
                     .bind(&t.entity_id)
                     .execute(&mut *tx)
                     .await;
@@ -172,6 +233,7 @@ pub async fn apply_sync_package_to_db(
                 icon = excluded.icon,
                 color = excluded.color,
                 updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= subjects.updated_at OR subjects.updated_at IS NULL
             "#,
         )
         .bind(&s.id)
@@ -196,6 +258,7 @@ pub async fn apply_sync_package_to_db(
                 color = excluded.color,
                 subject_id = excluded.subject_id,
                 updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= folders.updated_at OR folders.updated_at IS NULL
             "#,
         )
         .bind(&f.id)
@@ -232,6 +295,7 @@ pub async fn apply_sync_package_to_db(
                 icon = excluded.icon,
                 description = excluded.description,
                 updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= decks.updated_at OR decks.updated_at IS NULL
             "#,
         )
         .bind(&d.id)
@@ -245,7 +309,7 @@ pub async fn apply_sync_package_to_db(
         .await?;
     }
 
-    // 4. Flashcards (Chunked batched writes)
+    // 4. Flashcards (Chunked batched writes with in-flight review protection)
     for c in &pkg.flashcards {
         sqlx::query(
             r#"
@@ -275,6 +339,10 @@ pub async fn apply_sync_package_to_db(
                 front_image_url = excluded.front_image_url,
                 back_image_url = excluded.back_image_url,
                 updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= flashcards.updated_at
+               OR flashcards.updated_at IS NULL
+               OR (excluded.last_review IS NOT NULL AND flashcards.last_review IS NULL)
+               OR (excluded.last_review >= flashcards.last_review)
             "#,
         )
         .bind(&c.id)
@@ -338,6 +406,7 @@ pub async fn apply_sync_package_to_db(
                 test_date = excluded.test_date,
                 time_limit_minutes = excluded.time_limit_minutes,
                 updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= tests.updated_at OR tests.updated_at IS NULL
             "#,
         )
         .bind(&t.id)
@@ -359,8 +428,22 @@ pub async fn apply_sync_package_to_db(
     for q in &pkg.test_questions {
         sqlx::query(
             r#"
-            INSERT OR REPLACE INTO test_questions (id, test_id, type, question, options, correct_answer, user_answer, score, math_work, source_page, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO test_questions (id, test_id, type, question, options, correct_answer, user_answer, score, math_work, source_page, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                test_id = excluded.test_id,
+                type = excluded.type,
+                question = excluded.question,
+                options = excluded.options,
+                correct_answer = excluded.correct_answer,
+                user_answer = excluded.user_answer,
+                score = excluded.score,
+                math_work = excluded.math_work,
+                source_page = excluded.source_page,
+                updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= test_questions.updated_at
+               OR test_questions.updated_at IS NULL
+               OR (excluded.user_answer IS NOT NULL AND test_questions.user_answer IS NULL)
             "#,
         )
         .bind(&q.id)
@@ -374,6 +457,7 @@ pub async fn apply_sync_package_to_db(
         .bind(&q.math_work)
         .bind(q.source_page)
         .bind(&q.created_at)
+        .bind(&q.updated_at)
         .execute(&mut *tx)
         .await?;
     }
@@ -381,8 +465,17 @@ pub async fn apply_sync_package_to_db(
     for a in &pkg.test_analyses {
         sqlx::query(
             r#"
-            INSERT OR REPLACE INTO test_analyses (id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO test_analyses (id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                test_id = excluded.test_id,
+                subject_id = excluded.subject_id,
+                summary = excluded.summary,
+                strengths = excluded.strengths,
+                weaknesses = excluded.weaknesses,
+                recommendations = excluded.recommendations,
+                updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= test_analyses.updated_at OR test_analyses.updated_at IS NULL
             "#,
         )
         .bind(&a.id)
@@ -393,6 +486,7 @@ pub async fn apply_sync_package_to_db(
         .bind(&a.weaknesses)
         .bind(&a.recommendations)
         .bind(&a.created_at)
+        .bind(&a.updated_at)
         .execute(&mut *tx)
         .await?;
     }
@@ -400,8 +494,19 @@ pub async fn apply_sync_package_to_db(
     for e in &pkg.test_errors {
         sqlx::query(
             r#"
-            INSERT OR REPLACE INTO test_errors (id, test_id, subject_id, question_id, question_text, user_answer, correct_answer, error_reason, score, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO test_errors (id, test_id, subject_id, question_id, question_text, user_answer, correct_answer, error_reason, score, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                test_id = excluded.test_id,
+                subject_id = excluded.subject_id,
+                question_id = excluded.question_id,
+                question_text = excluded.question_text,
+                user_answer = excluded.user_answer,
+                correct_answer = excluded.correct_answer,
+                error_reason = excluded.error_reason,
+                score = excluded.score,
+                updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= test_errors.updated_at OR test_errors.updated_at IS NULL
             "#,
         )
         .bind(&e.id)
@@ -414,6 +519,7 @@ pub async fn apply_sync_package_to_db(
         .bind(&e.error_reason)
         .bind(e.score)
         .bind(&e.created_at)
+        .bind(&e.updated_at)
         .execute(&mut *tx)
         .await?;
     }
@@ -421,14 +527,25 @@ pub async fn apply_sync_package_to_db(
     // 7. FSRS parameters
     if let Some(ref params) = pkg.fsrs_parameters {
         sqlx::query(
-            "INSERT OR REPLACE INTO fsrs_parameters (id, params, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP)",
+            r#"
+            INSERT INTO fsrs_parameters (id, params, updated_at) VALUES (1, ?, COALESCE(?, CURRENT_TIMESTAMP))
+            ON CONFLICT(id) DO UPDATE SET
+                params = excluded.params,
+                updated_at = excluded.updated_at
+            WHERE excluded.updated_at >= fsrs_parameters.updated_at OR fsrs_parameters.updated_at IS NULL
+            "#,
         )
         .bind(params)
+        .bind(&pkg.fsrs_updated_at)
         .execute(&mut *tx)
         .await?;
     }
 
-    // 8. Tombstones
+    // 8. Tombstones (Purge expired > 60 days, then insert new)
+    let _ = sqlx::query("DELETE FROM sync_tombstones WHERE deleted_at < datetime('now', '-60 days')")
+        .execute(&mut *tx)
+        .await;
+
     for t in &pkg.tombstones {
         sqlx::query(
             "INSERT OR IGNORE INTO sync_tombstones (entity_id, entity_type, deleted_at) VALUES (?, ?, ?)",

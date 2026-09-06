@@ -4,6 +4,7 @@ export interface Subject {
   icon: string | null;
   color: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface Folder {
@@ -14,6 +15,7 @@ export interface Folder {
   subject_id: string | null;
   parent_folder_id: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface Deck {
@@ -23,6 +25,7 @@ export interface Deck {
   icon: string | null;
   description: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface Flashcard {
@@ -40,6 +43,7 @@ export interface Flashcard {
   /** ISO datetime of next due review. Source of truth for the due query. */
   next_review: string;
   created_at: string;
+  updated_at?: string | null;
   // FSRS fields (added in migration v4)
   stability: number;
   difficulty: number;
@@ -108,6 +112,7 @@ export interface Test {
   /** Allocated time limit / duration in minutes (e.g. 60 or 90). */
   time_limit_minutes: number | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export type TestQuestionType = 'multiple-choice' | 'short-answer' | 'long-answer' | 'true-false' | 'maths';
@@ -126,6 +131,7 @@ export interface TestQuestion {
   math_work: string | null;
   source_page: number | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface TestTrendPoint {
@@ -143,6 +149,7 @@ export interface TestAnalysis {
   weaknesses: string | null;
   recommendations: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface TestError {
@@ -156,6 +163,7 @@ export interface TestError {
   error_reason: string;
   score: number | null;
   created_at: string;
+  updated_at?: string | null;
   test_name?: string;
   subject_name?: string;
 }

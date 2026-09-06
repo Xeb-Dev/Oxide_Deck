@@ -334,6 +334,152 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "clean_orphaned_sync_data_and_enable_foreign_keys",
+            sql: "
+                PRAGMA foreign_keys = ON;
+
+                -- 1. Clean up orphaned test child records
+                DELETE FROM test_questions WHERE test_id NOT IN (SELECT id FROM tests);
+                DELETE FROM test_analyses WHERE test_id NOT IN (SELECT id FROM tests);
+                DELETE FROM test_errors WHERE test_id NOT IN (SELECT id FROM tests);
+
+                -- 2. Clean up orphaned tests whose subject was deleted
+                DELETE FROM tests WHERE subject_id NOT IN (SELECT id FROM subjects);
+
+                -- 3. Unassign folders whose subject was deleted
+                UPDATE folders SET subject_id = NULL WHERE subject_id IS NOT NULL AND subject_id NOT IN (SELECT id FROM subjects);
+
+                -- 4. Clean up any orphaned flashcards whose deck was deleted
+                DELETE FROM flashcards WHERE deck_id NOT IN (SELECT id FROM decks);
+
+                -- 5. Cascade triggers to guarantee child record cleanup even if PRAGMA is off
+                CREATE TRIGGER IF NOT EXISTS trg_tests_cascade_cleanup
+                AFTER DELETE ON tests
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM test_questions WHERE test_id = OLD.id;
+                    DELETE FROM test_analyses WHERE test_id = OLD.id;
+                    DELETE FROM test_errors WHERE test_id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_subjects_cascade_cleanup
+                AFTER DELETE ON subjects
+                FOR EACH ROW
+                BEGIN
+                    UPDATE folders SET subject_id = NULL WHERE subject_id = OLD.id;
+                    DELETE FROM tests WHERE subject_id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_decks_cascade_cleanup
+                AFTER DELETE ON decks
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM flashcards WHERE deck_id = OLD.id;
+                END;
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "add_question_updated_at_and_recursive_tombstones",
+            sql: "
+                PRAGMA foreign_keys = ON;
+                PRAGMA recursive_triggers = ON;
+
+                -- 1. Add updated_at to test child tables
+                ALTER TABLE test_questions ADD COLUMN updated_at DATETIME;
+                ALTER TABLE test_analyses ADD COLUMN updated_at DATETIME;
+                ALTER TABLE test_errors ADD COLUMN updated_at DATETIME;
+
+                UPDATE test_questions SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+                UPDATE test_analyses SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+                UPDATE test_errors SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP);
+
+                -- 2. Triggers for updated_at on test child tables
+                CREATE TRIGGER IF NOT EXISTS trg_test_questions_updated_at
+                AFTER UPDATE ON test_questions
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE test_questions SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_test_analyses_updated_at
+                AFTER UPDATE ON test_analyses
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE test_analyses SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_test_errors_updated_at
+                AFTER UPDATE ON test_errors
+                FOR EACH ROW
+                WHEN NEW.updated_at IS OLD.updated_at OR NEW.updated_at IS NULL
+                BEGIN
+                    UPDATE test_errors SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+                END;
+
+                -- 3. Tombstone trigger for test_questions
+                CREATE TRIGGER IF NOT EXISTS trg_test_questions_delete_tombstone
+                AFTER DELETE ON test_questions
+                FOR EACH ROW
+                BEGIN
+                    INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at)
+                    VALUES (OLD.id, 'test_question', CURRENT_TIMESTAMP);
+                END;
+
+                -- 4. Tombstone revocation triggers on insert (restores/recreations clear existing tombstones)
+                CREATE TRIGGER IF NOT EXISTS trg_flashcards_insert_revocation
+                AFTER INSERT ON flashcards
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_decks_insert_revocation
+                AFTER INSERT ON decks
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_folders_insert_revocation
+                AFTER INSERT ON folders
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_subjects_insert_revocation
+                AFTER INSERT ON subjects
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_tests_insert_revocation
+                AFTER INSERT ON tests
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_test_questions_insert_revocation
+                AFTER INSERT ON test_questions
+                FOR EACH ROW
+                BEGIN
+                    DELETE FROM sync_tombstones WHERE entity_id = NEW.id;
+                END;
+
+                -- 5. Purge expired tombstones older than 60 days
+                DELETE FROM sync_tombstones WHERE deleted_at < datetime('now', '-60 days');
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }
+
 

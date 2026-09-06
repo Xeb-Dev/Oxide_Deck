@@ -184,3 +184,28 @@ pub fn extract_referenced_media_files(cards: &[crate::sync::models::Flashcard]) 
 
     refs
 }
+
+/// Remove local media files that are no longer referenced by any flashcard
+pub fn cleanup_orphaned_local_media_files(
+    media_dir: &Path,
+    referenced_files: &std::collections::HashSet<String>,
+) -> usize {
+    let mut removed_count = 0;
+    if let Ok(entries) = fs::read_dir(media_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if !referenced_files.contains(name) {
+                            let path = entry.path();
+                            if fs::remove_file(path).is_ok() {
+                                removed_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    removed_count
+}

@@ -438,9 +438,15 @@ export default function WebDAVSyncSettings() {
               borderRadius: "8px",
               background: syncResult.success
                 ? "rgba(16, 185, 129, 0.08)"
+                : syncResult.update_required
+                ? "rgba(245, 158, 11, 0.1)"
                 : "rgba(239, 68, 68, 0.08)",
               border: `1px solid ${
-                syncResult.success ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"
+                syncResult.success
+                  ? "rgba(16, 185, 129, 0.3)"
+                  : syncResult.update_required
+                  ? "rgba(245, 158, 11, 0.4)"
+                  : "rgba(239, 68, 68, 0.3)"
               }`,
               marginTop: "4px",
               marginBottom: "12px",
@@ -452,12 +458,27 @@ export default function WebDAVSyncSettings() {
           >
             {syncResult.success ? (
               <CheckCircle2 size={18} style={{ color: "#10b981", flexShrink: 0, marginTop: "2px" }} />
+            ) : syncResult.update_required ? (
+              <AlertCircle size={18} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "2px" }} />
             ) : (
               <AlertCircle size={18} style={{ color: "#ef4444", flexShrink: 0, marginTop: "2px" }} />
             )}
             <div>
-              <div style={{ fontWeight: 600, color: syncResult.success ? "#10b981" : "#ef4444" }}>
-                {syncResult.success ? "Synchronization Completed" : "Synchronization Failed"}
+              <div
+                style={{
+                  fontWeight: 600,
+                  color: syncResult.success
+                    ? "#10b981"
+                    : syncResult.update_required
+                    ? "#f59e0b"
+                    : "#ef4444",
+                }}
+              >
+                {syncResult.success
+                  ? "Synchronization Completed"
+                  : syncResult.update_required
+                  ? "App Update Required"
+                  : "Synchronization Failed"}
               </div>
               <div style={{ color: "var(--text-secondary)", marginTop: "2px" }}>
                 {syncResult.message}

@@ -1,5 +1,6 @@
 import { getDB, generateUUID } from "./connection";
 import type { Folder } from "./types";
+import { triggerBackgroundSyncIfEnabled } from "../syncEngine";
 
 export async function getFolders(): Promise<Folder[]> {
   const db = await getDB();
@@ -19,6 +20,7 @@ export async function createFolder(
     "INSERT INTO folders (id, name, icon, color, subject_id, parent_folder_id) VALUES ($1, $2, $3, $4, $5, $6)",
     [id, name, icon, color, subjectId, parentFolderId]
   );
+  triggerBackgroundSyncIfEnabled("new folder");
   return {
     id,
     name,
@@ -43,12 +45,15 @@ export async function updateFolder(
     "UPDATE folders SET name = $1, icon = $2, color = $3, subject_id = $4, parent_folder_id = $5 WHERE id = $6",
     [name, icon, color, subjectId, parentFolderId, id]
   );
+  triggerBackgroundSyncIfEnabled("update folder");
 }
 
 export async function deleteFolder(id: string): Promise<void> {
   const db = await getDB();
-  // Set related decks' folder_id to NULL due to ON DELETE SET NULL foreign key constraint
+  await db.execute("UPDATE folders SET parent_folder_id = NULL WHERE parent_folder_id = $1", [id]);
+  await db.execute("UPDATE decks SET folder_id = NULL WHERE folder_id = $1", [id]);
   await db.execute("DELETE FROM folders WHERE id = $1", [id]);
+  triggerBackgroundSyncIfEnabled("delete folder");
 }
 
 export async function updateFolderSubject(folderId: string, subjectId: string | null): Promise<void> {
@@ -58,6 +63,7 @@ export async function updateFolderSubject(folderId: string, subjectId: string | 
     "UPDATE folders SET subject_id = $1, parent_folder_id = NULL WHERE id = $2",
     [subjectId, folderId]
   );
+  triggerBackgroundSyncIfEnabled("move folder to subject");
 }
 
 /** Nest a folder under another folder (or clear parent). Inherits subject from the parent. */
@@ -71,4 +77,6 @@ export async function moveFolderToParent(
     "UPDATE folders SET parent_folder_id = $1, subject_id = $2 WHERE id = $3",
     [parentFolderId, subjectId, folderId]
   );
+  triggerBackgroundSyncIfEnabled("move folder");
 }
+

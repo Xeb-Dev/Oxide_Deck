@@ -38,7 +38,15 @@ if ([string]::IsNullOrWhiteSpace($FolderName)) {
 [System.IO.Path]::GetInvalidFileNameChars() | ForEach-Object { $FolderName = $FolderName.Replace($_, "_") }
 $FolderName = $FolderName.Trim()
 if ([string]::IsNullOrWhiteSpace($FolderName)) {
-    $FolderName = "1.0.0"
+    $FolderName = "1.4.1"
+}
+
+# Automatically sync build version into package.json, tauri.conf.json, and Cargo.toml
+$verMatch = [regex]::Match($FolderName, '\d+\.\d+\.\d+(\-[0-9A-Za-z\.-]+)?')
+if ($verMatch.Success) {
+    $matchedVer = $verMatch.Value
+    Write-Host "Syncing app configuration to version $matchedVer..." -ForegroundColor Cyan
+    & node (Join-Path $WorkspaceRoot "scripts\bump_version.js") $matchedVer
 }
 
 # Create output directories: both specific subfolder and base Releases folder

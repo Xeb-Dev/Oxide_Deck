@@ -114,9 +114,19 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     const handleRefresh = () => {
       loadData(false);
     };
+    const handleSyncComplete = (e: any) => {
+      if (e?.detail?.success) {
+        loadData(false);
+        onSidebarRefresh();
+      }
+    };
     window.addEventListener("oxide-deck-db-refresh", handleRefresh);
-    return () => window.removeEventListener("oxide-deck-db-refresh", handleRefresh);
-  }, []);
+    window.addEventListener("webdav-sync-completed", handleSyncComplete);
+    return () => {
+      window.removeEventListener("oxide-deck-db-refresh", handleRefresh);
+      window.removeEventListener("webdav-sync-completed", handleSyncComplete);
+    };
+  }, [currentNav.deckId, onSidebarRefresh]);
 
   useEffect(() => {
     if (!currentNav.openModal) return;

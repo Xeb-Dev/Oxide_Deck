@@ -102,6 +102,8 @@ pub struct TestQuestion {
     pub math_work: Option<String>,
     pub source_page: Option<i64>,
     pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
@@ -114,6 +116,8 @@ pub struct TestAnalysis {
     pub weaknesses: Option<String>,
     pub recommendations: Option<String>,
     pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
@@ -128,6 +132,8 @@ pub struct TestError {
     pub error_reason: String,
     pub score: Option<f64>,
     pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
@@ -140,10 +146,14 @@ pub struct Tombstone {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SyncPackage {
     pub version: String,
+    #[serde(default)]
+    pub app_version: Option<String>,
     pub exported_at: String,
     pub client_id: String,
     pub device_name: String,
     pub schema_version: i64,
+    #[serde(default)]
+    pub min_compatible_app_version: Option<String>,
     pub subjects: Vec<Subject>,
     pub folders: Vec<Folder>,
     pub decks: Vec<Deck>,
@@ -154,6 +164,8 @@ pub struct SyncPackage {
     pub test_analyses: Vec<TestAnalysis>,
     pub test_errors: Vec<TestError>,
     pub fsrs_parameters: Option<String>,
+    #[serde(default)]
+    pub fsrs_updated_at: Option<String>,
     pub notification_settings: Option<serde_json::Value>,
     #[serde(default)]
     pub tombstones: Vec<Tombstone>,
@@ -191,6 +203,10 @@ pub struct SyncResult {
     pub message: String,
     pub timestamp: String,
     pub stats: Option<SyncStats>,
+    #[serde(default)]
+    pub update_required: Option<bool>,
+    #[serde(default)]
+    pub required_version: Option<String>,
 }
 
 // Helper alias for bool

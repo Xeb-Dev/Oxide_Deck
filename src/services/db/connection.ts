@@ -12,7 +12,9 @@ export async function getDB(): Promise<Database> {
         await db.execute("PRAGMA journal_mode = WAL;");
         await db.execute("PRAGMA busy_timeout = 5000;");
         await db.execute("PRAGMA synchronous = NORMAL;");
-        logger.info("Database", "Configured SQLite pragmas (WAL mode, busy_timeout=5000ms)");
+        await db.execute("PRAGMA foreign_keys = ON;");
+        await db.execute("PRAGMA recursive_triggers = ON;");
+        logger.info("Database", "Configured SQLite pragmas (WAL mode, busy_timeout=5000ms, foreign_keys=ON, recursive_triggers=ON)");
       } catch (e) {
         logger.warn("Database", "Could not set SQLite pragmas", e);
       }

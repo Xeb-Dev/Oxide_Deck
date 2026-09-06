@@ -34,9 +34,17 @@ pub async fn run_native_sync(
     let db_path = app_data_dir.join("oxide_deck.db");
     let db_url = format!("sqlite://{}", db_path.to_str().unwrap());
 
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+
+    let connect_opts = SqliteConnectOptions::from_str(&db_url)
+        .map_err(|e| format!("Invalid DB connection string: {}", e))?
+        .busy_timeout(std::time::Duration::from_secs(10));
+
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(&db_url)
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .connect_with(connect_opts)
         .await
         .map_err(|e| format!("Failed to connect to SQLite: {}", e))?;
 
@@ -82,11 +90,12 @@ pub async fn run_native_sync(
             UploadError::Network(err) => err,
         })?;
 
-        // Sync media
+        // Sync media & cleanup orphaned local files
         let referenced = crate::sync::media::extract_referenced_media_files(&local_pkg.flashcards);
         let media_count = crate::sync::webdav::sync_media_files(&client, &config, &media_dir, &referenced)
             .await
             .unwrap_or(0);
+        crate::sync::media::cleanup_orphaned_local_media_files(&media_dir, &referenced);
 
         let now_iso = crate::sync::merger::chrono_now_iso();
         return Ok(SyncResult {
@@ -106,6 +115,8 @@ pub async fn run_native_sync(
                 tests: local_pkg.tests.len(),
                 media_synced: media_count,
             }),
+            update_required: None,
+            required_version: None,
         });
     }
 
@@ -117,6 +128,27 @@ pub async fn run_native_sync(
             .filter(|(raw, _)| !raw.trim().is_empty())
             .ok_or_else(|| "No remote sync snapshot found on WebDAV server.".to_string())?;
 
+        // Preflight version guard
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw_json) {
+            let remote_schema = val.get("schema_version").and_then(|v| v.as_i64()).unwrap_or(1);
+            let remote_app_ver = val.get("app_version").and_then(|v| v.as_str()).map(|s| s.to_string());
+            if remote_schema > 16 {
+                let msg = format!(
+                    "Your WebDAV database was updated by a newer version of Oxide Deck{} (schema v{}). Please update this app to resume syncing.",
+                    remote_app_ver.as_deref().map(|v| format!(" (v{})", v)).unwrap_or_default(),
+                    remote_schema
+                );
+                return Ok(SyncResult {
+                    success: false,
+                    message: msg,
+                    timestamp: crate::sync::merger::chrono_now_iso(),
+                    stats: None,
+                    update_required: Some(true),
+                    required_version: remote_app_ver,
+                });
+            }
+        }
+
         let remote_pkg: SyncPackage = serde_json::from_str(&raw_json)
             .map_err(|e| format!("Invalid remote JSON snapshot: {}", e))?;
 
@@ -125,11 +157,12 @@ pub async fn run_native_sync(
             .await
             .map_err(|e| format!("Failed to apply snapshot to database: {}", e))?;
 
-        // Sync media
+        // Sync media & cleanup orphaned local files
         let referenced = crate::sync::media::extract_referenced_media_files(&remote_pkg.flashcards);
         let media_count = crate::sync::webdav::sync_media_files(&client, &config, &media_dir, &referenced)
             .await
             .unwrap_or(0);
+        crate::sync::media::cleanup_orphaned_local_media_files(&media_dir, &referenced);
 
         let now_iso = crate::sync::merger::chrono_now_iso();
         return Ok(SyncResult {
@@ -148,6 +181,8 @@ pub async fn run_native_sync(
                 tests: remote_pkg.tests.len(),
                 media_synced: media_count,
             }),
+            update_required: None,
+            required_version: None,
         });
     }
 
@@ -174,6 +209,27 @@ pub async fn run_native_sync(
 
         let (merged_pkg, current_remote_etag) = match remote_data {
             Some((raw_json, etag)) if !raw_json.trim().is_empty() => {
+                // Preflight version compatibility check
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw_json) {
+                    let remote_schema = val.get("schema_version").and_then(|v| v.as_i64()).unwrap_or(1);
+                    let remote_app_ver = val.get("app_version").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    if remote_schema > 16 {
+                        let msg = format!(
+                            "Your WebDAV database was updated by a newer version of Oxide Deck{} (schema v{}). Please update this app to resume syncing.",
+                            remote_app_ver.as_deref().map(|v| format!(" (v{})", v)).unwrap_or_default(),
+                            remote_schema
+                        );
+                        return Ok(SyncResult {
+                            success: false,
+                            message: msg,
+                            timestamp: crate::sync::merger::chrono_now_iso(),
+                            stats: None,
+                            update_required: Some(true),
+                            required_version: remote_app_ver,
+                        });
+                    }
+                }
+
                 // Back up legacy v13 files if needed
                 let _ = crate::sync::webdav::backup_legacy_file_if_needed(&client, &config, &raw_json).await;
 
@@ -199,12 +255,13 @@ pub async fn run_native_sync(
             .await
             .map_err(|e| format!("Failed to commit merged data: {}", e))?;
 
-        // 4. Sync media files
+        // 4. Sync media files & clean up orphans
         emit_progress("media_sync", "Syncing flashcard media assets...", None, None);
         let referenced_media = crate::sync::media::extract_referenced_media_files(&merged_pkg.flashcards);
         let media_count = crate::sync::webdav::sync_media_files(&client, &config, &media_dir, &referenced_media)
             .await
             .unwrap_or(0);
+        crate::sync::media::cleanup_orphaned_local_media_files(&media_dir, &referenced_media);
 
         // 5. Upload merged snapshot with optimistic concurrency
         emit_progress("uploading", "Uploading synced snapshot to cloud...", None, None);
@@ -242,6 +299,8 @@ pub async fn run_native_sync(
                         tests: merged_pkg.tests.len(),
                         media_synced: media_count,
                     }),
+                    update_required: None,
+                    required_version: None,
                 });
             }
             Err(UploadError::PreconditionFailed) => {

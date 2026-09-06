@@ -93,6 +93,9 @@ export async function updateTest(
 
 export async function deleteTest(id: string): Promise<void> {
   const db = await getDB();
+  await db.execute("DELETE FROM test_questions WHERE test_id = $1", [id]);
+  await db.execute("DELETE FROM test_analyses WHERE test_id = $1", [id]);
+  await db.execute("DELETE FROM test_errors WHERE test_id = $1", [id]);
   await db.execute("DELETE FROM tests WHERE id = $1", [id]);
   triggerBackgroundSyncIfEnabled("delete test");
 }
@@ -144,6 +147,7 @@ export async function createTestQuestion(
 export async function deleteTestQuestions(testId: string): Promise<void> {
   const db = await getDB();
   await db.execute("DELETE FROM test_questions WHERE test_id = $1", [testId]);
+  triggerBackgroundSyncIfEnabled("delete test questions");
 }
 
 export async function bulkCreateTestQuestions(

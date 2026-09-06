@@ -5,6 +5,9 @@ pub mod db;
 pub mod webdav;
 pub mod engine;
 
+#[cfg(test)]
+mod tests;
+
 use tauri::command;
 use models::{WebDavConfig, SyncResult};
 

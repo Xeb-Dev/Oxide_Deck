@@ -152,6 +152,20 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
 
   useEffect(() => {
     loadData();
+    const handleSyncComplete = (e: any) => {
+      if (e?.detail?.success) {
+        loadData();
+      }
+    };
+    const handleRefresh = () => {
+      loadData();
+    };
+    window.addEventListener("webdav-sync-completed", handleSyncComplete);
+    window.addEventListener("oxide-deck-db-refresh", handleRefresh);
+    return () => {
+      window.removeEventListener("webdav-sync-completed", handleSyncComplete);
+      window.removeEventListener("oxide-deck-db-refresh", handleRefresh);
+    };
   }, []);
 
   useEffect(() => {

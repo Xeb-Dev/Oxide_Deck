@@ -6,13 +6,13 @@ use crate::sync::models::{
 
 /// Deterministically merges local and remote sync packages in native Rust.
 pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPackage {
-    // 0. Build Tombstones Set (deletions propagate bidirectionally)
+    // 0. Build Tombstones Set (deletions propagate bidirectionally; purge expired > 60 days)
+    let sixty_days_ago = chrono_days_ago_iso(60);
     let mut tombstone_map: HashMap<String, Tombstone> = HashMap::new();
-    for t in &remote.tombstones {
-        tombstone_map.insert(t.entity_id.clone(), t.clone());
-    }
-    for t in &local.tombstones {
-        tombstone_map.insert(t.entity_id.clone(), t.clone());
+    for t in remote.tombstones.into_iter().chain(local.tombstones.into_iter()) {
+        if t.deleted_at.as_str() >= sixty_days_ago.as_str() {
+            tombstone_map.insert(t.entity_id.clone(), t);
+        }
     }
 
     let is_deleted = |id: &str| tombstone_map.contains_key(id);
@@ -27,7 +27,6 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
     for s in local.subjects {
         if !is_deleted(&s.id) {
             if let Some(existing) = subject_map.get(&s.id) {
-                // If both exist, choose newer updated_at (or fallback to local)
                 let rem_updated = existing.updated_at.as_deref().unwrap_or(&existing.created_at);
                 let loc_updated = s.updated_at.as_deref().unwrap_or(&s.created_at);
                 if loc_updated >= rem_updated {
@@ -57,6 +56,40 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
             } else {
                 folder_map.insert(f.id.clone(), f);
             }
+        }
+    }
+
+    // Break any circular folder parent references (e.g. F1 -> F2 -> F1)
+    let mut visited = HashSet::new();
+    let mut on_stack = HashSet::new();
+    let mut to_unparent = Vec::new();
+
+    for folder_id in folder_map.keys() {
+        if !visited.contains(folder_id) {
+            let mut curr = Some(folder_id.clone());
+            let mut path = Vec::new();
+            while let Some(id) = curr {
+                if on_stack.contains(&id) {
+                    to_unparent.push(id.clone());
+                    break;
+                }
+                if visited.contains(&id) {
+                    break;
+                }
+                visited.insert(id.clone());
+                on_stack.insert(id.clone());
+                path.push(id.clone());
+                curr = folder_map.get(&id).and_then(|f| f.parent_folder_id.clone());
+            }
+            for p in path {
+                on_stack.remove(&p);
+            }
+        }
+    }
+
+    for id in to_unparent {
+        if let Some(folder) = folder_map.get_mut(&id) {
+            folder.parent_folder_id = None;
         }
     }
 
@@ -117,7 +150,6 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
                 card_map.insert(id, rem.clone());
             }
             (Some(loc), Some(rem)) => {
-                // Both exist: resolve FSRS review state vs content updates
                 let loc_last_rev = loc.last_review.as_deref().unwrap_or("");
                 let rem_last_rev = rem.last_review.as_deref().unwrap_or("");
                 let loc_reps = loc.reps.unwrap_or(0);
@@ -173,15 +205,15 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
         history_map.insert(h.id.clone(), h);
     }
 
-    // 6. Tests & Questions Merge
+    // 6. Tests Merge
     let mut test_map: HashMap<String, Test> = HashMap::new();
     for t in remote.tests {
-        if !is_deleted(&t.id) {
+        if !is_deleted(&t.id) && !is_deleted(&t.subject_id) {
             test_map.insert(t.id.clone(), t);
         }
     }
     for t in local.tests {
-        if !is_deleted(&t.id) {
+        if !is_deleted(&t.id) && !is_deleted(&t.subject_id) {
             if let Some(existing) = test_map.get(&t.id) {
                 let rem_updated = existing.updated_at.as_deref().unwrap_or(&existing.created_at);
                 let loc_updated = t.updated_at.as_deref().unwrap_or(&t.created_at);
@@ -194,40 +226,137 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
         }
     }
 
+    // 7. Cascade dependent entity pruning across all maps based on tombstones and entity existence:
+    let valid_folder_ids: std::collections::HashSet<String> = folder_map.keys().cloned().collect();
+
+    // - Unassign folders whose subject was deleted via tombstone or missing from subject_map
+    for folder in folder_map.values_mut() {
+        if let Some(ref s_id) = folder.subject_id {
+            if is_deleted(s_id) || !subject_map.contains_key(s_id) {
+                folder.subject_id = None;
+            }
+        }
+        // Unassign parent_folder_id if parent is tombstoned or missing from valid_folder_ids
+        if let Some(ref p_id) = folder.parent_folder_id {
+            if is_deleted(p_id) || !valid_folder_ids.contains(p_id) {
+                folder.parent_folder_id = None;
+            }
+        }
+    }
+
+    // - Unassign decks whose folder was deleted via tombstone or missing from valid_folder_ids
+    for deck in deck_map.values_mut() {
+        if let Some(ref f_id) = deck.folder_id {
+            if is_deleted(f_id) || !valid_folder_ids.contains(f_id) {
+                deck.folder_id = None;
+            }
+        }
+    }
+
+    // - Cascade-delete tests whose subject was deleted via tombstone
+    test_map.retain(|_, t| !is_deleted(&t.subject_id) && subject_map.contains_key(&t.subject_id));
+
+    // - Cascade-delete flashcards whose deck was deleted via tombstone
+    card_map.retain(|_, c| !is_deleted(&c.deck_id));
+
+    // 8. Questions, Analyses, and Errors (Pruned when test or question is deleted via tombstone)
     let mut question_map: HashMap<String, TestQuestion> = HashMap::new();
     for q in remote.test_questions {
-        if !is_deleted(&q.id) {
+        if !is_deleted(&q.id) && !is_deleted(&q.test_id) {
             question_map.insert(q.id.clone(), q);
         }
     }
     for q in local.test_questions {
-        if !is_deleted(&q.id) {
-            question_map.insert(q.id.clone(), q);
+        if !is_deleted(&q.id) && !is_deleted(&q.test_id) {
+            if let Some(existing) = question_map.get(&q.id) {
+                let rem_updated = existing.updated_at.as_deref().unwrap_or(&existing.created_at);
+                let loc_updated = q.updated_at.as_deref().unwrap_or(&q.created_at);
+
+                let prefer_local = if loc_updated > rem_updated {
+                    true
+                } else if loc_updated < rem_updated {
+                    false
+                } else {
+                    let loc_has_answer = q.user_answer.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) || q.score.is_some();
+                    let rem_has_answer = existing.user_answer.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) || existing.score.is_some();
+                    loc_has_answer || !rem_has_answer
+                };
+
+                if prefer_local {
+                    question_map.insert(q.id.clone(), q);
+                }
+            } else {
+                question_map.insert(q.id.clone(), q);
+            }
         }
     }
 
     let mut analysis_map: HashMap<String, TestAnalysis> = HashMap::new();
     for a in remote.test_analyses {
-        analysis_map.insert(a.id.clone(), a);
+        if !is_deleted(&a.id) && !is_deleted(&a.test_id) {
+            analysis_map.insert(a.id.clone(), a);
+        }
     }
     for a in local.test_analyses {
-        analysis_map.insert(a.id.clone(), a);
+        if !is_deleted(&a.id) && !is_deleted(&a.test_id) {
+            if let Some(existing) = analysis_map.get(&a.id) {
+                let rem_updated = existing.updated_at.as_deref().unwrap_or(&existing.created_at);
+                let loc_updated = a.updated_at.as_deref().unwrap_or(&a.created_at);
+                if loc_updated >= rem_updated {
+                    analysis_map.insert(a.id.clone(), a);
+                }
+            } else {
+                analysis_map.insert(a.id.clone(), a);
+            }
+        }
     }
 
     let mut error_map: HashMap<String, TestError> = HashMap::new();
     for e in remote.test_errors {
-        error_map.insert(e.id.clone(), e);
+        if !is_deleted(&e.id) && !is_deleted(&e.test_id) {
+            error_map.insert(e.id.clone(), e);
+        }
     }
     for e in local.test_errors {
-        error_map.insert(e.id.clone(), e);
+        if !is_deleted(&e.id) && !is_deleted(&e.test_id) {
+            if let Some(existing) = error_map.get(&e.id) {
+                let rem_updated = existing.updated_at.as_deref().unwrap_or(&existing.created_at);
+                let loc_updated = e.updated_at.as_deref().unwrap_or(&e.created_at);
+                if loc_updated >= rem_updated {
+                    error_map.insert(e.id.clone(), e);
+                }
+            } else {
+                error_map.insert(e.id.clone(), e);
+            }
+        }
     }
+
+    // Reconcile FSRS parameters by timestamp
+    let (chosen_fsrs_params, chosen_fsrs_updated_at) = match (&local.fsrs_parameters, &remote.fsrs_parameters) {
+        (Some(loc_p), Some(rem_p)) => {
+            let loc_u = local.fsrs_updated_at.as_deref().unwrap_or("");
+            let rem_u = remote.fsrs_updated_at.as_deref().unwrap_or("");
+            if loc_u >= rem_u {
+                (Some(loc_p.clone()), local.fsrs_updated_at)
+            } else {
+                (Some(rem_p.clone()), remote.fsrs_updated_at)
+            }
+        }
+        (Some(loc_p), None) => (Some(loc_p.clone()), local.fsrs_updated_at),
+        (None, Some(rem_p)) => (Some(rem_p.clone()), remote.fsrs_updated_at),
+        (None, None) => (None, None),
+    };
+
+    let merged_schema_version = std::cmp::max(local.schema_version, remote.schema_version);
 
     SyncPackage {
         version: "1.0".to_string(),
+        app_version: local.app_version.or(remote.app_version),
         exported_at: chrono_now_iso(),
         client_id: local.client_id,
         device_name: local.device_name,
-        schema_version: 14,
+        schema_version: merged_schema_version,
+        min_compatible_app_version: local.min_compatible_app_version.or(remote.min_compatible_app_version),
         subjects: subject_map.into_values().collect(),
         folders: folder_map.into_values().collect(),
         decks: deck_map.into_values().collect(),
@@ -237,15 +366,15 @@ pub fn merge_sync_packages(local: SyncPackage, remote: SyncPackage) -> SyncPacka
         test_questions: question_map.into_values().collect(),
         test_analyses: analysis_map.into_values().collect(),
         test_errors: error_map.into_values().collect(),
-        fsrs_parameters: remote.fsrs_parameters.or(local.fsrs_parameters),
+        fsrs_parameters: chosen_fsrs_params,
+        fsrs_updated_at: chosen_fsrs_updated_at,
         notification_settings: local.notification_settings.or(remote.notification_settings),
         tombstones: tombstone_map.into_values().collect(),
     }
 }
 
-pub fn chrono_now_iso() -> String {
-    let now = std::time::SystemTime::now();
-    let duration = now
+pub fn format_system_time_iso(time: std::time::SystemTime) -> String {
+    let duration = time
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let total_secs = duration.as_secs();
@@ -258,7 +387,6 @@ pub fn chrono_now_iso() -> String {
     let minutes = (day_secs % 3600) / 60;
     let seconds = day_secs % 60;
 
-    // Howard Hinnant's algorithm for converting days since 1970-01-01 to (Y, M, D)
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u32;
@@ -276,6 +404,18 @@ pub fn chrono_now_iso() -> String {
     )
 }
 
+pub fn chrono_now_iso() -> String {
+    format_system_time_iso(std::time::SystemTime::now())
+}
+
+pub fn chrono_days_ago_iso(days: u64) -> String {
+    let now = std::time::SystemTime::now();
+    let past = now
+        .checked_sub(std::time::Duration::from_secs(days * 86400))
+        .unwrap_or(std::time::UNIX_EPOCH);
+    format_system_time_iso(past)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,10 +424,12 @@ mod tests {
     fn dummy_package() -> SyncPackage {
         SyncPackage {
             version: "1.0".to_string(),
+            app_version: Some("1.4.1".to_string()),
             exported_at: "2026-09-01T00:00:00Z".to_string(),
             client_id: "test_client".to_string(),
             device_name: "Test Device".to_string(),
-            schema_version: 14,
+            schema_version: 16,
+            min_compatible_app_version: Some("0.1.0".to_string()),
             subjects: vec![],
             folders: vec![],
             decks: vec![],
@@ -298,6 +440,7 @@ mod tests {
             test_analyses: vec![],
             test_errors: vec![],
             fsrs_parameters: None,
+            fsrs_updated_at: None,
             notification_settings: None,
             tombstones: vec![],
         }

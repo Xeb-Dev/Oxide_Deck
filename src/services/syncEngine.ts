@@ -22,12 +22,20 @@ import {
 } from "./webdavService";
 import { logger } from "./logger";
 
+export interface Tombstone {
+  entity_id: string;
+  entity_type: string;
+  deleted_at: string;
+}
+
 export interface SyncPackage {
   version: "1.0";
+  app_version?: string;
   exported_at: string;
   client_id: string;
   device_name: string;
   schema_version: number;
+  min_compatible_app_version?: string;
   subjects: Subject[];
   folders: Folder[];
   decks: Deck[];
@@ -38,7 +46,9 @@ export interface SyncPackage {
   test_analyses: TestAnalysis[];
   test_errors: TestError[];
   fsrs_parameters?: string | null;
+  fsrs_updated_at?: string | null;
   notification_settings?: any;
+  tombstones?: Tombstone[];
 }
 
 export interface SyncResult {
@@ -52,7 +62,10 @@ export interface SyncResult {
     flashcards: number;
     revisionLogs: number;
     tests: number;
+    media_synced?: number;
   };
+  update_required?: boolean;
+  required_version?: string;
 }
 
 function getClientId(): string {
@@ -113,7 +126,12 @@ export async function exportLocalSyncPackage(): Promise<SyncPackage> {
   const test_questions = await db.select<TestQuestion[]>("SELECT * FROM test_questions ORDER BY created_at ASC");
   const test_analyses = await db.select<TestAnalysis[]>("SELECT * FROM test_analyses ORDER BY created_at ASC");
   const test_errors = await db.select<TestError[]>("SELECT * FROM test_errors ORDER BY created_at ASC");
-  const fsrsRows = await db.select<{ params: string }[]>("SELECT params FROM fsrs_parameters WHERE id = 1");
+  const fsrsRows = await db.select<{ params: string; updated_at?: string }[]>(
+    "SELECT params, updated_at FROM fsrs_parameters WHERE id = 1"
+  );
+  const tombstones = await db.select<Tombstone[]>(
+    "SELECT entity_id, entity_type, deleted_at FROM sync_tombstones WHERE deleted_at >= datetime('now', '-60 days') ORDER BY deleted_at ASC"
+  );
 
   let notifSettings: any = null;
   try {
@@ -126,7 +144,7 @@ export async function exportLocalSyncPackage(): Promise<SyncPackage> {
     exported_at: new Date().toISOString(),
     client_id: getClientId(),
     device_name: getDeviceName(),
-    schema_version: 14,
+    schema_version: 16,
     subjects,
     folders,
     decks,
@@ -137,28 +155,100 @@ export async function exportLocalSyncPackage(): Promise<SyncPackage> {
     test_analyses,
     test_errors,
     fsrs_parameters: fsrsRows[0]?.params || null,
+    fsrs_updated_at: fsrsRows[0]?.updated_at || null,
     notification_settings: notifSettings,
+    tombstones,
   };
 }
 
 /**
- * Deterministically merge remote and local sync packages.
+ * Deterministically merge remote and local sync packages with tombstone propagation and cascade pruning.
  */
 export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): SyncPackage {
-  // 1. Subjects Merge (Union by ID)
+  // 0. Build Tombstones Map (purging tombstones older than 60 days)
+  const sixtyDaysAgoIso = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  const tombstoneMap = new Map<string, Tombstone>();
+  
+  (remote.tombstones || []).forEach((t) => {
+    if (t.deleted_at >= sixtyDaysAgoIso) {
+      tombstoneMap.set(t.entity_id, t);
+    }
+  });
+  (local.tombstones || []).forEach((t) => {
+    if (t.deleted_at >= sixtyDaysAgoIso) {
+      tombstoneMap.set(t.entity_id, t);
+    }
+  });
+
+  const isDeleted = (id: string) => tombstoneMap.has(id);
+
+  // 1. Subjects Merge (Union by ID, filtering tombstones)
   const subjectMap = new Map<string, Subject>();
-  remote.subjects?.forEach((s) => subjectMap.set(s.id, s));
-  local.subjects?.forEach((s) => subjectMap.set(s.id, s));
+  remote.subjects?.forEach((s) => {
+    if (!isDeleted(s.id)) subjectMap.set(s.id, s);
+  });
+  local.subjects?.forEach((s) => {
+    if (!isDeleted(s.id)) {
+      const existing = subjectMap.get(s.id);
+      if (existing) {
+        const remUpdated = existing.updated_at || existing.created_at;
+        const locUpdated = s.updated_at || s.created_at;
+        if (locUpdated >= remUpdated) subjectMap.set(s.id, s);
+      } else {
+        subjectMap.set(s.id, s);
+      }
+    }
+  });
 
-  // 2. Folders Merge (Union by ID)
+  // 2. Folders Merge (Union by ID, filtering tombstones)
   const folderMap = new Map<string, Folder>();
-  remote.folders?.forEach((f) => folderMap.set(f.id, f));
-  local.folders?.forEach((f) => folderMap.set(f.id, f));
+  remote.folders?.forEach((f) => {
+    if (!isDeleted(f.id)) folderMap.set(f.id, f);
+  });
+  local.folders?.forEach((f) => {
+    if (!isDeleted(f.id)) {
+      const existing = folderMap.get(f.id);
+      if (existing) {
+        const remUpdated = existing.updated_at || existing.created_at;
+        const locUpdated = f.updated_at || f.created_at;
+        if (locUpdated >= remUpdated) folderMap.set(f.id, f);
+      } else {
+        folderMap.set(f.id, f);
+      }
+    }
+  });
 
-  // 3. Decks Merge (Union by ID)
+  // Break folder parent cycles to prevent disappearing folders
+  for (const folder of folderMap.values()) {
+    let curr: string | null | undefined = folder.parent_folder_id;
+    const visited = new Set<string>([folder.id]);
+    while (curr) {
+      if (visited.has(curr)) {
+        folder.parent_folder_id = null;
+        break;
+      }
+      visited.add(curr);
+      curr = folderMap.get(curr)?.parent_folder_id;
+    }
+  }
+
+  // 3. Decks Merge (Union by ID, filtering tombstones)
   const deckMap = new Map<string, Deck>();
-  remote.decks?.forEach((d) => deckMap.set(d.id, d));
-  local.decks?.forEach((d) => deckMap.set(d.id, d));
+  remote.decks?.forEach((d) => {
+    if (!isDeleted(d.id)) deckMap.set(d.id, d);
+  });
+  local.decks?.forEach((d) => {
+    if (!isDeleted(d.id)) {
+      const existing = deckMap.get(d.id);
+      if (existing) {
+        const remUpdated = existing.updated_at || existing.created_at;
+        const locUpdated = d.updated_at || d.created_at;
+        if (locUpdated >= remUpdated) deckMap.set(d.id, d);
+      } else {
+        deckMap.set(d.id, d);
+      }
+    }
+  });
 
   // 4. Flashcards Merge (Intelligent Spaced Repetition State Resolution)
   const cardMap = new Map<string, Flashcard>();
@@ -167,35 +257,41 @@ export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): Sync
     ...(remote.flashcards || []).map((c) => c.id),
   ]);
 
-  const localCardMap = new Map(local.flashcards.map((c) => [c.id, c]));
+  const localCardMap = new Map((local.flashcards || []).map((c) => [c.id, c]));
   const remoteCardMap = new Map((remote.flashcards || []).map((c) => [c.id, c]));
 
   for (const id of allCardIds) {
+    if (isDeleted(id)) continue;
+
     const loc = localCardMap.get(id);
     const rem = remoteCardMap.get(id);
 
     if (loc && !rem) {
-      cardMap.set(id, loc);
+      if (!isDeleted(loc.deck_id)) cardMap.set(id, loc);
     } else if (!loc && rem) {
-      cardMap.set(id, rem);
+      if (!isDeleted(rem.deck_id)) cardMap.set(id, rem);
     } else if (loc && rem) {
-      // Both exist: resolve conflict
+      if (isDeleted(loc.deck_id) || isDeleted(rem.deck_id)) continue;
+
       const locLastReview = loc.last_review ? new Date(loc.last_review).getTime() : 0;
       const remLastReview = rem.last_review ? new Date(rem.last_review).getTime() : 0;
 
-      // Prefer the one with more recent study activity or higher repetition count
       const preferRemoteFSRS =
         remLastReview > locLastReview ||
         (remLastReview === locLastReview && (rem.reps || 0) > (loc.reps || 0));
 
       const chosenFSRS = preferRemoteFSRS ? rem : loc;
 
+      const locUpdated = loc.updated_at || loc.created_at;
+      const remUpdated = rem.updated_at || rem.created_at;
+      const contentSource = remUpdated > locUpdated ? rem : loc;
+
       cardMap.set(id, {
         id,
-        deck_id: loc.deck_id || rem.deck_id,
-        front: loc.front || rem.front,
-        back: loc.back || rem.back,
-        tags: loc.tags !== undefined ? loc.tags : rem.tags,
+        deck_id: contentSource.deck_id,
+        front: contentSource.front,
+        back: contentSource.back,
+        tags: contentSource.tags !== undefined ? contentSource.tags : loc.tags,
         ease: chosenFSRS.ease ?? loc.ease ?? 2.5,
         interval_days: chosenFSRS.interval_days ?? loc.interval_days ?? 0,
         repetitions: chosenFSRS.repetitions ?? loc.repetitions ?? 0,
@@ -209,9 +305,10 @@ export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): Sync
         elapsed_days: chosenFSRS.elapsed_days ?? loc.elapsed_days ?? 0,
         scheduled_days: chosenFSRS.scheduled_days ?? loc.scheduled_days ?? 0,
         last_review: chosenFSRS.last_review ?? loc.last_review ?? null,
-        image_url: loc.image_url || rem.image_url || null,
-        front_image_url: loc.front_image_url || rem.front_image_url || null,
-        back_image_url: loc.back_image_url || rem.back_image_url || null,
+        image_url: contentSource.image_url || loc.image_url || null,
+        front_image_url: contentSource.front_image_url || loc.front_image_url || null,
+        back_image_url: contentSource.back_image_url || loc.back_image_url || null,
+        updated_at: locUpdated > remUpdated ? locUpdated : remUpdated,
       });
     }
   }
@@ -223,27 +320,145 @@ export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): Sync
 
   // 6. Tests & Exams Merge
   const testMap = new Map<string, Test>();
-  remote.tests?.forEach((t) => testMap.set(t.id, t));
-  local.tests?.forEach((t) => testMap.set(t.id, t));
+  remote.tests?.forEach((t) => {
+    if (!isDeleted(t.id) && !isDeleted(t.subject_id)) testMap.set(t.id, t);
+  });
+  local.tests?.forEach((t) => {
+    if (!isDeleted(t.id) && !isDeleted(t.subject_id)) {
+      const existing = testMap.get(t.id);
+      if (existing) {
+        const remUpdated = existing.updated_at || existing.created_at;
+        const locUpdated = t.updated_at || t.created_at;
+        if (locUpdated >= remUpdated) testMap.set(t.id, t);
+      } else {
+        testMap.set(t.id, t);
+      }
+    }
+  });
 
+  // 7. Cascade dependent entity pruning & foreign key unassignment
+  for (const folder of folderMap.values()) {
+    if (folder.subject_id && (isDeleted(folder.subject_id) || !subjectMap.has(folder.subject_id))) {
+      folder.subject_id = null;
+    }
+    if (folder.parent_folder_id && (isDeleted(folder.parent_folder_id) || !folderMap.has(folder.parent_folder_id))) {
+      folder.parent_folder_id = null;
+    }
+  }
+
+  for (const deck of deckMap.values()) {
+    if (deck.folder_id && (isDeleted(deck.folder_id) || !folderMap.has(deck.folder_id))) {
+      deck.folder_id = null;
+    }
+  }
+
+  // 8. Questions, Analyses, Errors (pruned when test is deleted, merged by updated_at)
   const questionMap = new Map<string, TestQuestion>();
-  remote.test_questions?.forEach((q) => questionMap.set(q.id, q));
-  local.test_questions?.forEach((q) => questionMap.set(q.id, q));
+  const allQuestionIds = new Set<string>([
+    ...(remote.test_questions || []).map((q) => q.id),
+    ...(local.test_questions || []).map((q) => q.id),
+  ]);
+  const remQuestions = new Map((remote.test_questions || []).map((q) => [q.id, q]));
+  const locQuestions = new Map((local.test_questions || []).map((q) => [q.id, q]));
+
+  for (const qid of allQuestionIds) {
+    if (isDeleted(qid)) continue;
+    const loc = locQuestions.get(qid);
+    const rem = remQuestions.get(qid);
+    if (loc && !rem) {
+      if (!isDeleted(loc.test_id) && testMap.has(loc.test_id)) questionMap.set(qid, loc);
+    } else if (!loc && rem) {
+      if (!isDeleted(rem.test_id) && testMap.has(rem.test_id)) questionMap.set(qid, rem);
+    } else if (loc && rem) {
+      if (isDeleted(loc.test_id) || !testMap.has(loc.test_id)) continue;
+      const locUp = loc.updated_at || loc.created_at;
+      const remUp = rem.updated_at || rem.created_at;
+      if (locUp > remUp) {
+        questionMap.set(qid, loc);
+      } else if (remUp > locUp) {
+        questionMap.set(qid, rem);
+      } else {
+        // Equal timestamp tie-breaker: prefer answered
+        const locAnswered = Boolean(loc.user_answer || loc.score !== null);
+        const remAnswered = Boolean(rem.user_answer || rem.score !== null);
+        if (locAnswered && !remAnswered) {
+          questionMap.set(qid, loc);
+        } else {
+          questionMap.set(qid, rem);
+        }
+      }
+    }
+  }
 
   const analysisMap = new Map<string, TestAnalysis>();
-  remote.test_analyses?.forEach((a) => analysisMap.set(a.id, a));
-  local.test_analyses?.forEach((a) => analysisMap.set(a.id, a));
+  const allAnalysisIds = new Set<string>([
+    ...(remote.test_analyses || []).map((a) => a.id),
+    ...(local.test_analyses || []).map((a) => a.id),
+  ]);
+  const remAnalyses = new Map((remote.test_analyses || []).map((a) => [a.id, a]));
+  const locAnalyses = new Map((local.test_analyses || []).map((a) => [a.id, a]));
+  for (const aid of allAnalysisIds) {
+    if (isDeleted(aid)) continue;
+    const loc = locAnalyses.get(aid);
+    const rem = remAnalyses.get(aid);
+    if (loc && !rem) {
+      if (!isDeleted(loc.test_id) && testMap.has(loc.test_id)) analysisMap.set(aid, loc);
+    } else if (!loc && rem) {
+      if (!isDeleted(rem.test_id) && testMap.has(rem.test_id)) analysisMap.set(aid, rem);
+    } else if (loc && rem) {
+      if (isDeleted(loc.test_id) || !testMap.has(loc.test_id)) continue;
+      const locUp = loc.updated_at || loc.created_at;
+      const remUp = rem.updated_at || rem.created_at;
+      analysisMap.set(aid, locUp >= remUp ? loc : rem);
+    }
+  }
 
   const errorMap = new Map<string, TestError>();
-  remote.test_errors?.forEach((e) => errorMap.set(e.id, e));
-  local.test_errors?.forEach((e) => errorMap.set(e.id, e));
+  const allErrorIds = new Set<string>([
+    ...(remote.test_errors || []).map((e) => e.id),
+    ...(local.test_errors || []).map((e) => e.id),
+  ]);
+  const remErrors = new Map((remote.test_errors || []).map((e) => [e.id, e]));
+  const locErrors = new Map((local.test_errors || []).map((e) => [e.id, e]));
+  for (const eid of allErrorIds) {
+    if (isDeleted(eid)) continue;
+    const loc = locErrors.get(eid);
+    const rem = remErrors.get(eid);
+    if (loc && !rem) {
+      if (!isDeleted(loc.test_id) && testMap.has(loc.test_id)) errorMap.set(eid, loc);
+    } else if (!loc && rem) {
+      if (!isDeleted(rem.test_id) && testMap.has(rem.test_id)) errorMap.set(eid, rem);
+    } else if (loc && rem) {
+      if (isDeleted(loc.test_id) || !testMap.has(loc.test_id)) continue;
+      const locUp = loc.updated_at || loc.created_at;
+      const remUp = rem.updated_at || rem.created_at;
+      errorMap.set(eid, locUp >= remUp ? loc : rem);
+    }
+  }
+
+  // 9. FSRS parameters merged by timestamp
+  let mergedFsrs = local.fsrs_parameters || remote.fsrs_parameters;
+  let mergedFsrsUpdatedAt = local.fsrs_updated_at || remote.fsrs_updated_at;
+  if (local.fsrs_parameters && remote.fsrs_parameters) {
+    const locUp = local.fsrs_updated_at || "";
+    const remUp = remote.fsrs_updated_at || "";
+    if (remUp > locUp) {
+      mergedFsrs = remote.fsrs_parameters;
+      mergedFsrsUpdatedAt = remote.fsrs_updated_at;
+    } else {
+      mergedFsrs = local.fsrs_parameters;
+      mergedFsrsUpdatedAt = local.fsrs_updated_at;
+    }
+  }
 
   return {
     version: "1.0",
+    app_version: local.app_version || remote.app_version,
     exported_at: new Date().toISOString(),
     client_id: getClientId(),
     device_name: getDeviceName(),
-    schema_version: 14,
+    schema_version: Math.max(local.schema_version || 16, remote.schema_version || 16),
+    min_compatible_app_version: local.min_compatible_app_version || remote.min_compatible_app_version,
     subjects: Array.from(subjectMap.values()),
     folders: Array.from(folderMap.values()),
     decks: Array.from(deckMap.values()),
@@ -253,8 +468,10 @@ export function mergeSyncPackages(local: SyncPackage, remote: SyncPackage): Sync
     test_questions: Array.from(questionMap.values()),
     test_analyses: Array.from(analysisMap.values()),
     test_errors: Array.from(errorMap.values()),
-    fsrs_parameters: remote.fsrs_parameters || local.fsrs_parameters,
+    fsrs_parameters: mergedFsrs,
+    fsrs_updated_at: mergedFsrsUpdatedAt,
     notification_settings: local.notification_settings || remote.notification_settings,
+    tombstones: Array.from(tombstoneMap.values()),
   };
 }
 
@@ -297,14 +514,45 @@ export async function applySyncPackageToLocalDB(
   const cardMap = new Map((localCards || []).map((c) => [c.id, c]));
   const historySet = new Set((localHistoryRows || []).map((h) => h.id));
   const testMap = new Map((localTestRows || []).map((t) => [t.id, t]));
-  const questionSet = new Set((localQuestionRows || []).map((q) => q.id));
-  const analysisSet = new Set((localAnalysisRows || []).map((a) => a.id));
-  const errorSet = new Set((localErrorRows || []).map((e) => e.id));
 
   await db.execute("BEGIN TRANSACTION");
   try {
-  // 1. Subjects (only insert/update if dirty or new)
-  for (const s of pkg.subjects || []) {
+    await db.execute("PRAGMA recursive_triggers = ON;");
+
+    // 0. Apply tombstones: delete matching entities from local SQLite and store tombstones
+    if (pkg.tombstones && pkg.tombstones.length > 0) {
+      for (const t of pkg.tombstones) {
+        switch (t.entity_type) {
+          case "flashcard":
+            await db.execute("DELETE FROM flashcards WHERE id = $1", [t.entity_id]);
+            break;
+          case "deck":
+            await db.execute("DELETE FROM decks WHERE id = $1", [t.entity_id]);
+            break;
+          case "folder":
+            await db.execute("DELETE FROM folders WHERE id = $1", [t.entity_id]);
+            break;
+          case "subject":
+            await db.execute("DELETE FROM subjects WHERE id = $1", [t.entity_id]);
+            break;
+          case "test":
+            await db.execute("DELETE FROM tests WHERE id = $1", [t.entity_id]);
+            break;
+          case "test_question":
+            await db.execute("DELETE FROM test_questions WHERE id = $1", [t.entity_id]);
+            break;
+        }
+        await db.execute(
+          "INSERT OR REPLACE INTO sync_tombstones (entity_id, entity_type, deleted_at) VALUES ($1, $2, $3)",
+          [t.entity_id, t.entity_type, t.deleted_at]
+        );
+      }
+    }
+    // Purge expired tombstones (> 60 days)
+    await db.execute("DELETE FROM sync_tombstones WHERE deleted_at < datetime('now', '-60 days')");
+
+    // 1. Subjects (only insert/update if dirty or new)
+    for (const s of pkg.subjects || []) {
       const existing = subjectMap.get(s.id);
       if (
         existing &&
@@ -370,9 +618,18 @@ export async function applySyncPackageToLocalDB(
       );
     }
 
-    // 4. Flashcards (Diff-based FSRS delta writes)
+    // 4. Flashcards (Diff-based FSRS delta writes, protecting local reviews)
     for (const c of pkg.flashcards || []) {
       const existing = cardMap.get(c.id);
+      if (
+        existing &&
+        existing.last_review &&
+        c.last_review &&
+        existing.last_review > c.last_review
+      ) {
+        continue; // Local card was reviewed more recently, preserve it
+      }
+
       if (
         existing &&
         existing.deck_id === c.deck_id &&
@@ -390,7 +647,7 @@ export async function applySyncPackageToLocalDB(
         existing.front_image_url === (c.front_image_url || null) &&
         existing.back_image_url === (c.back_image_url || null)
       ) {
-        continue; // Unchanged, skip disk write!
+        continue; // Unchanged, skip disk write
       }
 
       await db.execute(
@@ -449,8 +706,8 @@ export async function applySyncPackageToLocalDB(
         continue;
       }
       await db.execute(
-        `INSERT OR REPLACE INTO tests (id, subject_id, name, description, source_type, source_data, score, max_score, test_date, time_limit_minutes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `INSERT OR REPLACE INTO tests (id, subject_id, name, description, source_type, source_data, score, max_score, test_date, time_limit_minutes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           t.id,
           t.subject_id,
@@ -463,18 +720,34 @@ export async function applySyncPackageToLocalDB(
           t.test_date || null,
           t.time_limit_minutes || null,
           t.created_at,
+          t.updated_at || t.created_at,
         ]
       );
     }
 
+    const existingQMap = new Map((localQuestionRows || []).map((q) => [q.id, q]));
     for (const q of pkg.test_questions || []) {
-      if (questionSet.has(q.id)) {
+      const existing = existingQMap.get(q.id);
+      const optsStr = q.options
+        ? typeof q.options === "string"
+          ? q.options
+          : JSON.stringify(q.options)
+        : null;
+
+      if (
+        existing &&
+        existing.question === q.question &&
+        existing.type === q.type &&
+        existing.correct_answer === (q.correct_answer || null) &&
+        existing.user_answer === (q.user_answer || null) &&
+        existing.score === (q.score ?? null) &&
+        existing.math_work === (q.math_work || null)
+      ) {
         continue;
       }
-      const optsStr = q.options ? JSON.stringify(q.options) : null;
       await db.execute(
-        `INSERT OR REPLACE INTO test_questions (id, test_id, type, question, options, correct_answer, user_answer, score, math_work, source_page, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `INSERT OR REPLACE INTO test_questions (id, test_id, type, question, options, correct_answer, user_answer, score, math_work, source_page, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           q.id,
           q.test_id,
@@ -487,17 +760,26 @@ export async function applySyncPackageToLocalDB(
           q.math_work || null,
           q.source_page || null,
           q.created_at,
+          q.updated_at || q.created_at,
         ]
       );
     }
 
+    const existingAMap = new Map((localAnalysisRows || []).map((a) => [a.id, a]));
     for (const a of pkg.test_analyses || []) {
-      if (analysisSet.has(a.id)) {
+      const existing = existingAMap.get(a.id);
+      if (
+        existing &&
+        existing.summary === a.summary &&
+        existing.strengths === (a.strengths || null) &&
+        existing.weaknesses === (a.weaknesses || null) &&
+        existing.recommendations === (a.recommendations || null)
+      ) {
         continue;
       }
       await db.execute(
-        `INSERT OR REPLACE INTO test_analyses (id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT OR REPLACE INTO test_analyses (id, test_id, subject_id, summary, strengths, weaknesses, recommendations, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           a.id,
           a.test_id,
@@ -507,17 +789,27 @@ export async function applySyncPackageToLocalDB(
           a.weaknesses || null,
           a.recommendations || null,
           a.created_at,
+          a.updated_at || a.created_at,
         ]
       );
     }
 
+    const existingEMap = new Map((localErrorRows || []).map((e) => [e.id, e]));
     for (const e of pkg.test_errors || []) {
-      if (errorSet.has(e.id)) {
+      const existing = existingEMap.get(e.id);
+      if (
+        existing &&
+        existing.question_text === e.question_text &&
+        existing.user_answer === (e.user_answer || null) &&
+        existing.correct_answer === (e.correct_answer || null) &&
+        existing.error_reason === e.error_reason &&
+        existing.score === (e.score ?? null)
+      ) {
         continue;
       }
       await db.execute(
-        `INSERT OR REPLACE INTO test_errors (id, test_id, subject_id, question_id, question_text, user_answer, correct_answer, error_reason, score, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT OR REPLACE INTO test_errors (id, test_id, subject_id, question_id, question_text, user_answer, correct_answer, error_reason, score, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           e.id,
           e.test_id,
@@ -529,15 +821,17 @@ export async function applySyncPackageToLocalDB(
           e.error_reason,
           e.score,
           e.created_at,
+          e.updated_at || e.created_at,
         ]
       );
     }
 
     // 7. FSRS Parameters
     if (pkg.fsrs_parameters) {
+      const updatedAtVal = pkg.fsrs_updated_at || new Date().toISOString();
       await db.execute(
-        "INSERT OR REPLACE INTO fsrs_parameters (id, params, updated_at) VALUES (1, $1, CURRENT_TIMESTAMP)",
-        [pkg.fsrs_parameters]
+        "INSERT OR REPLACE INTO fsrs_parameters (id, params, updated_at) VALUES (1, $1, $2)",
+        [pkg.fsrs_parameters, updatedAtVal]
       );
     }
 
@@ -609,6 +903,9 @@ export async function performWebDAVSync(customConfig?: WebDavConfig, allowHidden
         saveWebDavConfig(config);
         await getStats().catch(() => {});
       }
+      if (res.update_required && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-update-required", { detail: res }));
+      }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: res }));
       }
@@ -640,6 +937,20 @@ export async function performWebDAVSync(customConfig?: WebDavConfig, allowHidden
     let mergedPkg: SyncPackage;
     if (remoteRawJson) {
       const remotePkg: SyncPackage = JSON.parse(remoteRawJson);
+      if (remotePkg.schema_version && remotePkg.schema_version > 16) {
+        const updateRes: SyncResult = {
+          success: false,
+          message: `Sync halted: Remote database schema v${remotePkg.schema_version} requires a newer version of Oxide Deck (current v16). Please update your app.`,
+          timestamp: new Date().toISOString(),
+          update_required: true,
+          required_version: remotePkg.app_version || `v${remotePkg.schema_version}`,
+        };
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("webdav-update-required", { detail: updateRes }));
+          window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: updateRes }));
+        }
+        return updateRes;
+      }
       mergedPkg = mergeSyncPackages(localPkg, remotePkg);
     } else {
       // First sync or empty remote
@@ -803,13 +1114,23 @@ export async function forceUploadToWebDAV(customConfig?: WebDavConfig): Promise<
         lastLocalDataModifiedAt = getSyncTimestampMs(config.lastSyncedAt);
         saveWebDavConfig(config);
       }
+      if (res.update_required && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-update-required", { detail: res }));
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: res }));
+      }
       return res;
     } catch (err: any) {
-      return {
+      const errRes: SyncResult = {
         success: false,
         message: `Force upload failed: ${err?.message || err}`,
         timestamp: new Date().toISOString(),
       };
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: errRes }));
+      }
+      return errRes;
     } finally {
       isSyncInProgress = false;
     }
@@ -833,18 +1154,26 @@ export async function forceUploadToWebDAV(customConfig?: WebDavConfig): Promise<
 
     saveWebDavConfig(config);
 
-    return {
+    const successRes: SyncResult = {
       success: true,
       message: `Uploaded local database (${localPkg.flashcards.length} cards) to WebDAV.`,
       timestamp: nowIso,
     };
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: successRes }));
+    }
+    return successRes;
   } catch (err: any) {
     const errText = typeof err === "string" ? err : err?.message || (err ? JSON.stringify(err) : "Force upload failed.");
-    return {
+    const errRes: SyncResult = {
       success: false,
       message: `Force upload failed: ${errText}`,
       timestamp: new Date().toISOString(),
     };
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: errRes }));
+    }
+    return errRes;
   } finally {
     isSyncInProgress = false;
   }
@@ -879,13 +1208,23 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
         saveWebDavConfig(config);
         await getStats().catch(() => {});
       }
+      if (res.update_required && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-update-required", { detail: res }));
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: res }));
+      }
       return res;
     } catch (err: any) {
-      return {
+      const errRes: SyncResult = {
         success: false,
         message: `Force download failed: ${err?.message || err}`,
         timestamp: new Date().toISOString(),
       };
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: errRes }));
+      }
+      return errRes;
     } finally {
       isSyncInProgress = false;
     }
@@ -898,6 +1237,21 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
     }
 
     const remotePkg: SyncPackage = JSON.parse(remoteRawJson);
+    if (remotePkg.schema_version && remotePkg.schema_version > 16) {
+      const updateRes: SyncResult = {
+        success: false,
+        message: `Restore halted: Remote database schema v${remotePkg.schema_version} requires a newer version of Oxide Deck (current v16). Please update your app.`,
+        timestamp: new Date().toISOString(),
+        update_required: true,
+        required_version: remotePkg.app_version || `v${remotePkg.schema_version}`,
+      };
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("webdav-update-required", { detail: updateRes }));
+        window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: updateRes }));
+      }
+      return updateRes;
+    }
+
     await applySyncPackageToLocalDB(remotePkg);
 
     const nowIso = new Date().toISOString();
@@ -913,18 +1267,26 @@ export async function forceDownloadFromWebDAV(customConfig?: WebDavConfig): Prom
 
     saveWebDavConfig(config);
 
-    return {
+    const successRes: SyncResult = {
       success: true,
       message: `Downloaded and restored database from WebDAV (${remotePkg.flashcards.length} cards).`,
       timestamp: nowIso,
     };
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: successRes }));
+    }
+    return successRes;
   } catch (err: any) {
     const errText = typeof err === "string" ? err : err?.message || (err ? JSON.stringify(err) : "Force download failed.");
-    return {
+    const errRes: SyncResult = {
       success: false,
       message: `Force download failed: ${errText}`,
       timestamp: new Date().toISOString(),
     };
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("webdav-sync-completed", { detail: errRes }));
+    }
+    return errRes;
   } finally {
     isSyncInProgress = false;
   }
