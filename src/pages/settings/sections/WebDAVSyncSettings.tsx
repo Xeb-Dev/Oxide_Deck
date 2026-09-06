@@ -29,8 +29,10 @@ import {
   normalizeSyncTimestamp,
   SyncResult,
 } from "../../../services/syncEngine";
+import { useModal } from "../../../context/ModalContext";
 
 export default function WebDAVSyncSettings() {
+  const { confirm } = useModal();
   const [config, setConfig] = useState<WebDavConfig>(() => {
     const loaded = loadWebDavConfig();
     return {
@@ -153,13 +155,13 @@ export default function WebDAVSyncSettings() {
   };
 
   const handleForceUpload = async () => {
-    if (
-      !window.confirm(
-        "Are you sure you want to force upload? This will overwrite the remote WebDAV backup with your current local database."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Force Upload to WebDAV",
+      message: "Are you sure you want to force upload? This will overwrite the remote WebDAV backup with your current local database.",
+      confirmLabel: "Force Upload",
+      variant: "warning",
+    });
+    if (!ok) return;
     setSyncing(true);
     try {
       const res = await forceUploadToWebDAV(config);
@@ -173,13 +175,13 @@ export default function WebDAVSyncSettings() {
   };
 
   const handleForceDownload = async () => {
-    if (
-      !window.confirm(
-        "Are you sure you want to force download? This will overwrite your local database with the snapshot stored on the WebDAV server."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Force Download from WebDAV",
+      message: "Are you sure you want to force download? This will overwrite your local database with the snapshot stored on the WebDAV server.",
+      confirmLabel: "Force Download",
+      variant: "danger",
+    });
+    if (!ok) return;
     setSyncing(true);
     try {
       const res = await forceDownloadFromWebDAV(config);

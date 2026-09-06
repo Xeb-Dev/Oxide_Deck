@@ -1,15 +1,16 @@
 import { useEffect } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, AlertCircle, Info, X } from "lucide-react";
 
-interface ConfirmModalProps {
+export interface ConfirmModalProps {
   isOpen: boolean;
   title?: string;
   message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: "danger" | "warning" | "primary";
+  variant?: "danger" | "warning" | "primary" | "info";
+  isAlert?: boolean;
   onConfirm: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }
 
 export default function ConfirmModal({
@@ -19,21 +20,45 @@ export default function ConfirmModal({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "danger",
+  isAlert = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const handleDismiss = () => {
+    if (isAlert) {
+      onConfirm();
+    } else if (onCancel) {
+      onCancel();
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape") handleDismiss();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onCancel]);
+  }, [isOpen, isAlert, onConfirm, onCancel]);
 
   if (!isOpen) return null;
 
-  const isDanger = variant === "danger" || variant === "warning";
+  let iconColor = "#e11d48";
+  let iconBg = "rgba(225, 29, 72, 0.12)";
+  let IconComponent = AlertTriangle;
+  let confirmBtnBg: string | undefined = "#e11d48";
+
+  if (variant === "warning") {
+    iconColor = "#d97706";
+    iconBg = "rgba(245, 158, 11, 0.14)";
+    IconComponent = AlertCircle;
+    confirmBtnBg = "#d97706";
+  } else if (variant === "info" || variant === "primary") {
+    iconColor = "var(--accent-color)";
+    iconBg = "var(--accent-light)";
+    IconComponent = Info;
+    confirmBtnBg = undefined; // uses default notion-btn primary
+  }
 
   return (
     <div
@@ -46,7 +71,7 @@ export default function ConfirmModal({
         backgroundColor: "rgba(0, 0, 0, 0.55)",
         backdropFilter: "blur(4px)",
       }}
-      onClick={onCancel}
+      onClick={handleDismiss}
     >
       <div
         className="notion-modal"
@@ -72,15 +97,15 @@ export default function ConfirmModal({
               width: "42px",
               height: "42px",
               borderRadius: "10px",
-              backgroundColor: isDanger ? "rgba(225, 29, 72, 0.12)" : "var(--accent-light)",
-              color: isDanger ? "#e11d48" : "var(--accent-color)",
+              backgroundColor: iconBg,
+              color: iconColor,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
             }}
           >
-            <AlertTriangle size={22} />
+            <IconComponent size={22} />
           </div>
 
           <div style={{ flex: 1 }}>
@@ -100,6 +125,7 @@ export default function ConfirmModal({
                 color: "var(--text-secondary)",
                 marginTop: "6px",
                 lineHeight: 1.5,
+                whiteSpace: "pre-line",
               }}
             >
               {message}
@@ -108,7 +134,7 @@ export default function ConfirmModal({
 
           <button
             className="theme-toggle-btn"
-            onClick={onCancel}
+            onClick={handleDismiss}
             style={{ padding: "4px", color: "var(--text-muted)", marginLeft: "-4px" }}
             aria-label="Close"
           >
@@ -125,23 +151,25 @@ export default function ConfirmModal({
             marginTop: "8px",
           }}
         >
+          {!isAlert && onCancel && (
+            <button
+              type="button"
+              className="notion-btn secondary"
+              onClick={onCancel}
+              style={{ padding: "8px 18px", fontSize: "0.9rem" }}
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
-            className="notion-btn secondary"
-            onClick={onCancel}
-            style={{ padding: "8px 18px", fontSize: "0.9rem" }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={isDanger ? "notion-btn danger" : "notion-btn primary"}
+            className={variant === "danger" || variant === "warning" ? "notion-btn danger" : "notion-btn primary"}
             onClick={onConfirm}
             style={{
               padding: "8px 20px",
               fontSize: "0.9rem",
               fontWeight: 600,
-              backgroundColor: isDanger ? "#e11d48" : undefined,
+              backgroundColor: confirmBtnBg,
               color: "#fff",
             }}
             autoFocus

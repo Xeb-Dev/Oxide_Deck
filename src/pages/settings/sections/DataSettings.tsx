@@ -22,6 +22,7 @@ import {
   LogsSummary,
   logger,
 } from "../../../services/logger";
+import { useModal } from "../../../context/ModalContext";
 
 interface DataSettingsProps {
   onResetDB: () => void;
@@ -29,6 +30,7 @@ interface DataSettingsProps {
 }
 
 export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps) {
+  const { confirm } = useModal();
   const [logsSummary, setLogsSummary] = useState<LogsSummary | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -95,7 +97,13 @@ export default function DataSettings({ onResetDB, onNotify }: DataSettingsProps)
   };
 
   const handleClear = async () => {
-    if (confirm("Are you sure you want to clear all diagnostic debug logs?")) {
+    const ok = await confirm({
+      title: "Clear Diagnostic Logs?",
+      message: "Are you sure you want to clear all diagnostic debug logs?",
+      confirmLabel: "Clear Logs",
+      variant: "warning",
+    });
+    if (ok) {
       try {
         setIsClearing(true);
         await clearDebugLogs();

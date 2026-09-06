@@ -11,8 +11,10 @@ import StatusBanner, { StatusVariant } from "../../components/StatusBanner";
 import { resetDatabase, getFSRSParameters, optimizeFSRSParameters, resetFSRSParameters, FsrsParametersInfo } from "../../services/db";
 import { getAIConfig, getLearningPersonalities, LearningPersonality, saveLearningPersonalities, LLMTask, TaskAIConfig, getTaskAIConfig, saveTaskAIConfig } from "../../services/llm";
 import { getNotificationSettings, saveNotificationSettings, requestNotificationPermission, triggerNotification, NotificationSettings as NotifSettingsType } from "../../services/notificationService";
+import { useModal } from "../../context/ModalContext";
 
 export default function SettingsPage() {
+  const { confirm } = useModal();
   const [activeTab, setActiveTab] = useState<SettingsTabId>('ai');
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -188,7 +190,13 @@ export default function SettingsPage() {
 
   // Database Reset Handler
   const handleResetDB = async () => {
-    if (confirm("🚨 WARNING: This will permanently delete all folders, decks, flashcards, and revision statistics. This cannot be undone! Are you sure?")) {
+    const ok = await confirm({
+      title: "Reset Database?",
+      message: "🚨 WARNING: This will permanently delete all folders, decks, flashcards, and revision statistics. This cannot be undone! Are you sure?",
+      confirmLabel: "Reset Database",
+      variant: "danger",
+    });
+    if (ok) {
       try {
         await resetDatabase();
         setSaveStatus({ message: "Database has been reset successfully. Refreshing...", variant: "success" });

@@ -33,6 +33,7 @@ import {
   Download,
 } from "lucide-react";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
+import { useModal } from "../context/ModalContext";
 import FolderNode from "../components/FolderNode";
 import QrShareModal from "../components/QrShareModal";
 import QrScanModal from "../components/QrScanModal";
@@ -57,6 +58,7 @@ interface FoldersProps {
 }
 
 export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }: FoldersProps) {
+  const { confirm } = useModal();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -194,7 +196,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const handleDeleteSubjectClick = async (subjectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this subject? Folders inside will NOT be deleted, they will become unassigned.")) return;
+    const ok = await confirm({
+      title: "Delete Subject",
+      message: "Are you sure you want to delete this subject? Folders inside will NOT be deleted, they will become unassigned.",
+      confirmLabel: "Delete Subject",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteSubject(subjectId);
       onSidebarRefresh();
@@ -235,7 +243,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const handleDeleteFolderClick = async (folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this folder? Decks inside will NOT be deleted, they will become Uncategorized.")) return;
+    const ok = await confirm({
+      title: "Delete Folder",
+      message: "Are you sure you want to delete this folder? Decks inside will NOT be deleted, they will become Uncategorized.",
+      confirmLabel: "Delete Folder",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteFolder(folderId);
       onSidebarRefresh();
@@ -269,7 +283,13 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const handleDeleteDeckClick = async (deckId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this deck and all flashcards inside it?")) return;
+    const ok = await confirm({
+      title: "Delete Deck",
+      message: "Are you sure you want to delete this deck and all flashcards inside it?",
+      confirmLabel: "Delete Deck",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteDeck(deckId);
       onSidebarRefresh();
@@ -308,7 +328,14 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
   };
 
   const handleDeleteCardClick = async (cardId: string) => {
-    if (!selectedDeck || !confirm("Delete this card?")) return;
+    if (!selectedDeck) return;
+    const ok = await confirm({
+      title: "Delete Flashcard",
+      message: "Are you sure you want to delete this card?",
+      confirmLabel: "Delete Card",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteFlashcard(cardId);
       const cards = await getFlashcards(selectedDeck.id);

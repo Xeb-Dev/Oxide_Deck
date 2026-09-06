@@ -47,6 +47,7 @@ import TestListView from "./test/TestListView";
 import TestEditView from "./test/TestEditView";
 import TestDetailView from "./test/TestDetailView";
 import TestAnalysisModal from "./test/TestAnalysisModal";
+import { useModal } from "../context/ModalContext";
 
 interface Props {
   currentNav: { subjectId?: string };
@@ -54,6 +55,7 @@ interface Props {
 }
 
 export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: Props) {
+  const { confirm } = useModal();
   const [view, setView] = useState<View>("list");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [testsBySubject, setTestsBySubject] = useState<Record<string, Test[]>>({});
@@ -687,7 +689,13 @@ export default function TestPage({ currentNav, setCurrentNav: _setCurrentNav }: 
   };
 
   const handleDeleteTest = async (test: Test) => {
-    if (!confirm(`Delete test "${test.name}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: "Delete Test",
+      message: `Delete test "${test.name}"? This cannot be undone.`,
+      confirmLabel: "Delete Test",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteTest(test.id);
       setStatus({ message: "Test deleted.", variant: "success" });

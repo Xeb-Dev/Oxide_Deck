@@ -14,6 +14,7 @@ import {
 import MathText from "../components/MathText";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 import ConfirmModal from "../components/ConfirmModal";
+import { useModal } from "../context/ModalContext";
 
 interface MockExamProps {
   currentNav: {
@@ -135,20 +136,28 @@ export default function MockExamPage({ currentNav, setCurrentNav, onExamActiveCh
     }
   };
 
+  const { alert } = useModal();
+
   // Timer countdown effect
   useEffect(() => {
     if (!timerActive || timeRemainingSeconds === null) return;
     if (timeRemainingSeconds <= 0) {
       setTimerActive(false);
-      alert("⏰ Time is up! Submitting your exam now.");
-      handleSubmitExam();
+      alert({
+        title: "Time is up!",
+        message: "⏰ Your exam timer has expired. Submitting your exam now.",
+        variant: "warning",
+        confirmLabel: "Submit Exam",
+      }).then(() => {
+        handleSubmitExam();
+      });
       return;
     }
     const interval = setInterval(() => {
       setTimeRemainingSeconds((prev) => (prev != null && prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(interval);
-  }, [timerActive, timeRemainingSeconds]);
+  }, [timerActive, timeRemainingSeconds, alert]);
 
   // Start exam handler
   const handleStartExam = async () => {
