@@ -31,6 +31,7 @@ import {
   Upload,
   QrCode,
   Download,
+  X,
 } from "lucide-react";
 import StatusBanner, { StatusVariant } from "../components/StatusBanner";
 import { useModal } from "../context/ModalContext";
@@ -79,6 +80,8 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const [deckModalInitialFolderId, setDeckModalInitialFolderId] = useState<string>("none");
+  const [folderPromptTarget, setFolderPromptTarget] = useState<Folder | null>(null);
 
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -452,11 +455,27 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
     setShowFolderModal(true);
   };
 
-  const openAddSubfolder = (parent: Folder, e: React.MouseEvent) => {
+  const openFolderAddPrompt = (parent: Folder, e: React.MouseEvent) => {
     e.stopPropagation();
+    setFolderPromptTarget(parent);
+  };
+
+  const handlePromptCreateDeck = () => {
+    if (!folderPromptTarget) return;
+    const folder = folderPromptTarget;
+    setFolderPromptTarget(null);
+    setEditingDeck(null);
+    setDeckModalInitialFolderId(folder.id);
+    setShowDeckModal(true);
+  };
+
+  const handlePromptCreateSubfolder = () => {
+    if (!folderPromptTarget) return;
+    const folder = folderPromptTarget;
+    setFolderPromptTarget(null);
     setEditingFolder(null);
-    setFolderModalInitialSubjectId(parent.subject_id || "none");
-    setFolderModalInitialParentId(parent.id);
+    setFolderModalInitialSubjectId(folder.subject_id || "none");
+    setFolderModalInitialParentId(folder.id);
     setShowFolderModal(true);
   };
 
@@ -714,7 +733,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                     onRefresh={loadData}
                     onEditFolder={openEditFolder}
                     onDeleteFolder={handleDeleteFolderClick}
-                    onAddSubfolder={openAddSubfolder}
+                    onAddSubfolder={openFolderAddPrompt}
                     onEditDeck={openEditDeck}
                     onDeleteDeck={handleDeleteDeckClick}
                     onOpenDeck={(deckId) => setCurrentNav({ page: "folders", deckId })}
@@ -816,7 +835,7 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
                 onRefresh={loadData}
                 onEditFolder={openEditFolder}
                 onDeleteFolder={handleDeleteFolderClick}
-                onAddSubfolder={openAddSubfolder}
+                onAddSubfolder={openFolderAddPrompt}
                 onEditDeck={openEditDeck}
                 onDeleteDeck={handleDeleteDeckClick}
                 onOpenDeck={(deckId) => setCurrentNav({ page: "folders", deckId })}
@@ -972,11 +991,168 @@ export default function Folders({ currentNav, setCurrentNav, onSidebarRefresh }:
 
       <DeckModal
         editingDeck={editingDeck}
+        initialFolderId={deckModalInitialFolderId}
         isOpen={showDeckModal}
         folders={folders}
-        onClose={() => setShowDeckModal(false)}
+        onClose={() => {
+          setShowDeckModal(false);
+          setDeckModalInitialFolderId("none");
+        }}
         onSave={handleSaveDeck}
       />
+
+      {/* Folder Add Prompt Modal: choose Deck or Subfolder */}
+      {folderPromptTarget && (
+        <div
+          className="notion-modal-overlay"
+          style={{
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(4px)",
+          }}
+          onClick={() => setFolderPromptTarget(null)}
+        >
+          <div
+            className="notion-modal"
+            style={{
+              width: "90vw",
+              maxWidth: "430px",
+              padding: "24px",
+              borderRadius: "14px",
+              backgroundColor: "var(--bg-primary)",
+              border: "1px solid var(--border-color)",
+              boxShadow: "0 12px 36px rgba(0, 0, 0, 0.25)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+              animation: "modalFadeIn 0.18s ease-out",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "1.5rem" }}>{folderPromptTarget.icon || "📁"}</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--text-primary)" }}>
+                    Add to {folderPromptTarget.name}
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    What would you like to create in this folder?
+                  </div>
+                </div>
+              </div>
+              <button
+                className="theme-toggle-btn"
+                onClick={() => setFolderPromptTarget(null)}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Selection Options */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "4px" }}>
+              <button
+                type="button"
+                className="folder-prompt-option-btn"
+                onClick={handlePromptCreateDeck}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                  padding: "14px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-color)",
+                  backgroundColor: "var(--bg-secondary)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "8px",
+                    backgroundColor: "var(--accent-light)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "1.3rem",
+                    flexShrink: 0,
+                  }}
+                >
+                  🎴
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)" }}>
+                    New Deck
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    Create a flashcard deck inside this folder
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="folder-prompt-option-btn"
+                onClick={handlePromptCreateSubfolder}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                  padding: "14px 16px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-color)",
+                  backgroundColor: "var(--bg-secondary)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    borderRadius: "8px",
+                    backgroundColor: "var(--bg-hover)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "1.3rem",
+                    flexShrink: 0,
+                  }}
+                >
+                  📁
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--text-primary)" }}>
+                    New Subfolder
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    Create a nested subfolder to group more decks
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Cancel Button */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+              <button
+                type="button"
+                className="notion-btn secondary"
+                onClick={() => setFolderPromptTarget(null)}
+                style={{ padding: "6px 16px", fontSize: "0.85rem" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SubjectModal
         editingSubject={editingSubject}

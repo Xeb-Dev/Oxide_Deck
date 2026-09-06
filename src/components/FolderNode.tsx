@@ -127,7 +127,7 @@ export default function FolderNode({
         <div style={{ display: "flex", gap: "6px" }}>
           <button
             className="theme-toggle-btn"
-            title="Add subfolder"
+            title="Add deck or subfolder"
             onClick={(e) => onAddSubfolder(folder, e)}
           >
             <Plus size={14} />

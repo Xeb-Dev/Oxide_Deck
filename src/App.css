@@ -3721,4 +3721,15 @@ input[type="number"] {
 .version-update-banner-close:hover {
   background-color: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-}
+}
+
+.folder-prompt-option-btn {
+  transition: all var(--transition-fast);
+}
+
+.folder-prompt-option-btn:hover {
+  border-color: var(--accent-color) !important;
+  background-color: var(--bg-hover) !important;
+  transform: translateY(-1px);
+}
+

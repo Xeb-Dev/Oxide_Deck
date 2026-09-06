@@ -6,6 +6,7 @@ import type { Deck, Folder } from "../../services/db";
 
 interface DeckModalProps {
   editingDeck: Deck | null;
+  initialFolderId?: string;
   isOpen: boolean;
   folders: Folder[];
   onClose: () => void;
@@ -14,6 +15,7 @@ interface DeckModalProps {
 
 export default function DeckModal({
   editingDeck,
+  initialFolderId,
   isOpen,
   folders,
   onClose,
@@ -35,9 +37,9 @@ export default function DeckModal({
       setDeckName("");
       setDeckIcon("🎴");
       setDeckDesc("");
-      setDeckFolderId(folders[0]?.id || "none");
+      setDeckFolderId(initialFolderId || folders[0]?.id || "none");
     }
-  }, [editingDeck, folders, isOpen]);
+  }, [editingDeck, initialFolderId, folders, isOpen]);
 
   if (!isOpen) return null;
 
