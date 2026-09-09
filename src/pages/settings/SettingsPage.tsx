@@ -32,11 +32,11 @@ export default function SettingsPage() {
 
   // Task-Specific AI Routing State
   const [taskSettings, setTaskSettings] = useState<Record<LLMTask, TaskAIConfig>>({
-    scan: { provider: 'global', model: '' },
-    validate: { provider: 'global', model: '' },
-    teach: { provider: 'global', model: '' },
-    quiz: { provider: 'global', model: '' },
-    test: { provider: 'global', model: '' },
+    scan: { provider: 'global', model: '', promptAddition: '' },
+    validate: { provider: 'global', model: '', promptAddition: '' },
+    teach: { provider: 'global', model: '', promptAddition: '' },
+    quiz: { provider: 'global', model: '', promptAddition: '' },
+    test: { provider: 'global', model: '', promptAddition: '' },
   });
 
   // Notification Settings State

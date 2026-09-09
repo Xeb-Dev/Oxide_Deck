@@ -27,6 +27,7 @@ export function is503Error(error: any): boolean {
 export interface TaskAIConfig {
   provider: 'global' | 'gemini' | 'groq' | 'local';
   model: string;
+  promptAddition?: string;
 }
 
 export interface LearningPersonality {
@@ -96,12 +97,14 @@ export function getAIConfig(): AIConfig {
 export function getTaskAIConfig(task: LLMTask): TaskAIConfig {
   const provider = (localStorage.getItem(`oxide_deck_ai_provider_${task}`) as any) || 'global';
   const model = localStorage.getItem(`oxide_deck_model_${task}`) || '';
-  return { provider, model };
+  const promptAddition = localStorage.getItem(`oxide_deck_prompt_addition_${task}`) || '';
+  return { provider, model, promptAddition };
 }
 
 export function saveTaskAIConfig(task: LLMTask, config: TaskAIConfig): void {
   localStorage.setItem(`oxide_deck_ai_provider_${task}`, config.provider);
   localStorage.setItem(`oxide_deck_model_${task}`, config.model);
+  localStorage.setItem(`oxide_deck_prompt_addition_${task}`, config.promptAddition || '');
 }
 
 export function getLearningPersonalities(): LearningPersonality[] {
@@ -155,13 +158,18 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
     }
   }
 
+  const promptAddition = taskConfig.promptAddition?.trim();
+  const effectiveSystemPrompt = promptAddition
+    ? `${systemPrompt}\n\nAdditional Instructions & Guidelines:\n${promptAddition}`
+    : systemPrompt;
+
   if (provider === 'gemini') {
     if (!config.geminiKey) {
       throw new Error("Gemini API key is not configured in Settings.");
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.geminiKey}`;
 
-    const parts: any[] = [{ text: `${systemPrompt}\n\nUser request:\n${prompt}` }];
+    const parts: any[] = [{ text: `${effectiveSystemPrompt}\n\nUser request:\n${prompt}` }];
 
     if (imageBase64 && imageMimeType) {
       parts.push({
@@ -221,7 +229,7 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
     }
 
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: effectiveSystemPrompt },
       { role: 'user', content: userContent }
     ];
 
@@ -274,7 +282,7 @@ async function callLLM(task: LLMTask, prompt: string, systemPrompt: string, imag
     }
 
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: effectiveSystemPrompt },
       { role: 'user', content: userContent }
     ];
 
