@@ -25,6 +25,47 @@ interface RevisionProps {
   setCurrentNav: (nav: any) => void;
 }
 
+/**
+ * Modern Fisher-Yates shuffle algorithm to randomize revision queue order.
+ */
+function shuffleCards<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Inserts a requeued flashcard randomly into the remaining unreviewed queue.
+ * Ensures the card is NOT placed immediately after the card just failed (i.e. currentIndex + 1)
+ * unless the remaining unreviewed count is < 1 (remaining deck size < 2).
+ */
+function insertRequeuedCardRandomly(
+  cards: Flashcard[],
+  currentIndex: number,
+  updatedCard: Flashcard
+): Flashcard[] {
+  const unreviewedCount = cards.length - (currentIndex + 1);
+
+  // If there are no other unreviewed cards left to study (remaining deck size < 2),
+  // we must place it next.
+  if (unreviewedCount <= 0) {
+    return [...cards, updatedCard];
+  }
+
+  // To guarantee it does not appear right after the card you got wrong (currentIndex + 1),
+  // choose a random index between (currentIndex + 2) and cards.length (inclusive).
+  const minIndex = currentIndex + 2;
+  const maxIndex = cards.length;
+  const insertIndex = Math.floor(Math.random() * (maxIndex - minIndex + 1)) + minIndex;
+
+  const nextCards = [...cards];
+  nextCards.splice(insertIndex, 0, updatedCard);
+  return nextCards;
+}
+
 export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Flashcard[]>([]);
@@ -126,16 +167,18 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
 
         const dueCards = await getDueFlashcards();
         if (dueCards.length > 0) {
-          setCards(dueCards);
+          const shuffledDue = shuffleCards(dueCards);
+          setCards(shuffledDue);
           if (mode === 'quiz') {
-            generateAIQuiz(dueCards);
+            generateAIQuiz(shuffledDue);
           }
         } else {
           // If no cards are due today, fall back to all cards
           const allCards = await getAllFlashcards();
-          setCards(allCards);
+          const shuffledAll = shuffleCards(allCards);
+          setCards(shuffledAll);
           if (mode === 'quiz') {
-            generateAIQuiz(allCards);
+            generateAIQuiz(shuffledAll);
           }
         }
         return;
@@ -148,18 +191,23 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
       }
 
       // Load cards for single deck
-      let allCards = await getFlashcards(deckId);
-      setCards(allCards);
+      const allCards = await getFlashcards(deckId);
+      const shuffledAll = shuffleCards(allCards);
       
       if (mode === 'flashcard') {
         // Spaced repetition style: only review due cards, but if none are due, review all
         const due = await getDueFlashcards();
         const deckDue = due.filter(x => x.deck_id === deckId);
         if (deckDue.length > 0) {
-          setCards(deckDue);
+          setCards(shuffleCards(deckDue));
+        } else {
+          setCards(shuffledAll);
         }
       } else if (mode === 'quiz') {
-        generateAIQuiz(allCards);
+        setCards(shuffledAll);
+        generateAIQuiz(shuffledAll);
+      } else {
+        setCards(shuffledAll);
       }
     } catch (e) {
       console.error(e);
@@ -258,7 +306,8 @@ export default function Revision({ currentNav, setCurrentNav }: RevisionProps) {
 
       if (shouldRequeue) {
         // FSRS decided this card needs to be reviewed again in the same session
-        setCards(prev => [...prev, updatedCard]);
+        // Insert randomly into the remaining queue (not right after the failed card unless remaining < 2)
+        setCards(prev => insertRequeuedCardRandomly(prev, currentIndex, updatedCard));
 
         // Outgoing card flies out
         setOutgoingCard({
